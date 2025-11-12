@@ -1,0 +1,13 @@
+STRATEGY_NAME: VolatilityStrangle
+
+INDICATORS_REQUIRED:
+- None (options-based strategy without technical indicators)
+
+ENTRY_CONDITIONS:
+- Buy an out-of-the-money (OTM) call option and an OTM put option simultaneously, with the call strike above the current underlying price and the put strike below it (typically equidistant from the at-the-money strike for neutrality), using the same expiration date; no specific timing or threshold-based triggers mentioned
+
+EXIT_CONDITIONS:
+- No specific exit conditions mentioned; typically, positions are held until expiration, closed early if the underlying moves significantly in one direction to capture profits, or managed to limit losses from time decay (theta)
+
+STRATEGY_DETAILS:
+The Long Strangle is a non-directional options strategy designed to profit from significant volatility or large price movements in the underlying asset, regardless of direction (up or down). It involves purchasing one call option and one put option with the same expiration date but different strike prices, both typically out-of-the-money (OTM) to reduce premium costs compared to a straddle. The call's strike is higher than the current price, and the put's strike is lower, creating a "V-shaped" profit zone outside the breakeven points (upper breakeven = call strike + total premium paid; lower breakeven = put strike - total premium paid). Maximum loss is limited to the total premium paid if the underlying expires between the strikes (low volatility scenario). Profits are theoretically unlimited on the upside (via the call) or substantial on the downside (via the put), but the strategy suffers from high time decay (theta) and requires a breakout move before expiration to overcome the cost of entry. It's ideal for events like earnings announcements or economic releases expected to cause volatility spikes. Risk management often includes selecting strikes 1-2 standard deviations away based on implied volatility, and position sizing to limit capital at risk to 1-5% of the portfolio. No technical indicators are used in the core description, making it purely volatility-anticipatory rather than signal-driven.

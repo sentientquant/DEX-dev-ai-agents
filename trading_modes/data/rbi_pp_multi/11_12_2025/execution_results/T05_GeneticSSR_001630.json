@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "return_code": 1,
+  "stdout": "\n\ud83c\udf19 Running initial backtest for stats extraction...\n\ud83c\udf19 GeneticSSR initialized with optimized indicators: RSI(14), MACD(12,26,9), SMA(20) \u2728\n",
+  "stderr": "\nBacktest.run:   0%|          | 0/134437 [00:00<?, ?bar/s]\n                                                         \nTraceback (most recent call last):\n  File \"C:\\Users\\oia89\\OneDrive\\Desktop\\DEX-dev-ai-agents\\trading_modes\\data\\rbi_pp_multi\\11_12_2025\\backtests\\T05_GeneticSSR_DEBUG_v1.py\", line 144, in <module>\n    stats = bt.run()\n  File \"C:\\Users\\oia89\\AppData\\Roaming\\Python\\Python313\\site-packages\\backtesting\\backtesting.py\", line 1339, in run\n    strategy.next()\n    ~~~~~~~~~~~~~^^\n  File \"C:\\Users\\oia89\\OneDrive\\Desktop\\DEX-dev-ai-agents\\trading_modes\\data\\rbi_pp_multi\\11_12_2025\\backtests\\T05_GeneticSSR_DEBUG_v1.py\", line 41, in next\n    cash = self._broker.get_cash()\n           ^^^^^^^^^^^^^^^^^^^^^\nAttributeError: '_Broker' object has no attribute 'get_cash'\n",
+  "execution_time": 3.151353,
+  "timestamp": "2025-11-12T00:16:30.093956"
+}

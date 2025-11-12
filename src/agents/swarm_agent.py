@@ -60,9 +60,9 @@ from src.models.model_factory import model_factory
 
 # Configure which models to use in the swarm (set to True to enable)
 SWARM_MODELS = {
-    # 🌙 Moon Dev's Active Swarm Models - 3 Model Configuration
+    # 🌙 Moon Dev's Active Swarm Models - 3 Model Configuration (FIXED)
     "deepseek": (True, "deepseek", "deepseek-chat"),  # DeepSeek Chat - Fast chat model (API)
-    "xai": (True, "xai", "grok-4-fast-reasoning"),  # Grok-4 fast reasoning ($0.20-$0.50/1M tokens)
+    "xai": (True, "openrouter", "x-ai/grok-code-fast-1"),  # FIXED: Valid Grok model via OpenRouter
     "openrouter_qwen": (True, "openrouter", "qwen/qwen3-max"),  # Qwen 3 Max - Powerful reasoning ($1.00/$1.00 per 1M tokens)
 
     # 🔇 Disabled Models (uncomment to enable)

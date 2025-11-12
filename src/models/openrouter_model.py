@@ -157,9 +157,9 @@ class OpenRouterModel(BaseModel):
             )
             cprint(f"  ├─ ✅ OpenRouter client created", "green")
 
-            # Test the connection with a simple completion
+            # Test the connection with a simple completion (WITH TIMEOUT)
             cprint(f"  ├─ Testing connection with model: {self.model_name}", "cyan")
-            test_response = self.client.chat.completions.create(
+            test_response = self.client.with_options(timeout=5.0).chat.completions.create(
                 model=self.model_name,
                 messages=[
                     {"role": "user", "content": "Hello"}

@@ -3,7 +3,7 @@
 This agent uses AI to generate search queries and then searches the web for trading strategies
 
 Features:
-- Uses OpenRouter GLM model to generate optimal search queries
+- Uses GROQ models (FREE) to generate optimal search queries
 - Uses OpenAI's Chat Completions API with specialized web search models
 - Heavy instrumentation with print statements to understand the flow
 - Logs all search results to CSV for analysis
@@ -12,7 +12,7 @@ Features:
 
 Configuration:
 - SLEEP_BETWEEN_SEARCHES: Time in seconds between search cycles (default: 60)
-- GLM_MODEL: OpenRouter model to use for query generation (default: llama-3.3-70b)
+- GROQ_QUERY_MODEL: GROQ model for query generation (default: llama-3.3-70b-versatile)
   Available models:
   * meta-llama/llama-3.3-70b-instruct:free (default) - Reliable English responses
   * z-ai/glm-4.6 - Zhipu AI GLM (may respond in Chinese)
@@ -45,21 +45,43 @@ import textwrap
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 import requests
+import io
+
+# Force UTF-8 encoding for stdout/stderr on Windows to handle Unicode characters
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# Import GROQ directly (bypassing model_factory emoji issues on Windows)
+try:
+    from groq import Groq
+    print("[OK] GROQ library imported successfully")
+except ImportError as e:
+    print(f"[ERROR] Could not import groq: {e}")
+    print("[ERROR] Install with: pip install groq")
+    import sys as _sys
+    _sys.exit(1)
 
 # Load environment variables
 load_dotenv()
 
 # 🌙 Moon Dev Configuration 🌙
 SLEEP_BETWEEN_SEARCHES = 60  # Seconds to wait between searches (default: 60)
-GLM_MODEL = "z-ai/glm-4.6"  # Zhipu AI GLM - Moon Dev's choice!
-# Alternative models:
-# GLM_MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Llama 3.3 70B (reliable English)
-# GLM_MODEL = "deepseek/deepseek-chat"  # DeepSeek Chat
 
-# OpenAI Web Search Models (for Chat Completions API)
+# 🚀 GROQ MODELS (100% FREE, VERIFIED & WORKING)
+# Using GROQ for all web search operations - fast, free, and reliable!
+GROQ_QUERY_MODEL = "llama-3.3-70b-versatile"       # Query generation - Best quality
+GROQ_SEARCH_MODEL = "qwen/qwen3-32b"               # Search analysis - Excellent reasoning
+GROQ_EXTRACTION_MODEL = "llama-3.3-70b-versatile"  # Strategy extraction - Best quality
+
+# All GROQ models tested and verified working!
+# Free tier: 100k tokens/day, 30 requests/min
+# Models: llama-3.3-70b-versatile, qwen/qwen3-32b, llama-3.1-8b-instant
+
+# OpenAI Web Search Models (BACKUP - only if GROQ fails)
 # These are specialized models with built-in web search capabilities
-OPENAI_WEB_SEARCH_MODEL = "gpt-4o-mini-search-preview"  # Default: Fast & cheap
-# Alternative models to try:
+OPENAI_WEB_SEARCH_MODEL = "gpt-5-search-api"  # Backup: Fast & cheap
+# Alternative OpenAI models (if needed):
 # OPENAI_WEB_SEARCH_MODEL = "gpt-4o-search-preview"  # More powerful
 # OPENAI_WEB_SEARCH_MODEL = "gpt-5-search-api"  # Most powerful (GPT-5)
 
@@ -84,6 +106,41 @@ MOON_PHASES = ["🌑", "🌒", "🌓", "🌔", "🌕", "🌖", "🌗", "🌘"]
 # Get terminal width for better formatting
 TERM_WIDTH = shutil.get_terminal_size().columns
 
+def is_english_text(text: str) -> bool:
+    """
+    Check if text is primarily English (ASCII + common punctuation)
+    Returns True if text is English, False if contains non-English characters
+    """
+    if not text:
+        return False
+
+    # Count English characters (ASCII letters, numbers, punctuation, spaces)
+    english_chars = sum(1 for c in text if ord(c) < 128)
+    total_chars = len(text)
+
+    # If more than 90% of characters are ASCII, consider it English
+    english_ratio = english_chars / total_chars if total_chars > 0 else 0
+    return english_ratio >= 0.90
+
+# Professional quant strategy sources - evidence-based research
+PROFESSIONAL_QUANT_SOURCES = [
+    "quantifiedstrategies.com",
+    "quantpedia.com",
+    "investopedia.com",
+    "papers.ssrn.com",
+    "arxiv.org quantitative finance",
+    "tradingview.com/ideas/",
+    "elitetrader.com",
+    "nuclearphynance.com",
+    "wilmott.com",
+    "seekingalpha.com/article",
+    "quantstart.com",
+    "quantocracy.com",
+    "robotwealth.com",
+    "alphaarchitect.com",
+    "systematicindividualinvestor.com"
+]
+
 # Prompt for generating search queries
 SEARCH_QUERY_GENERATION_PROMPT = """
 ⚠️ CRITICAL INSTRUCTION: YOU MUST RESPOND IN ENGLISH ONLY ⚠️
@@ -100,6 +157,14 @@ Be creative and varied! Each query should explore DIFFERENT strategy types:
 - Time-based patterns, seasonal effects, intraday patterns
 - Multi-asset strategies, pairs trading, correlation strategies
 - Exotic indicators, custom combinations, unconventional approaches
+- Trend following, breakout systems, relative strength
+- Oversold/overbought, pairs trading, statistical arbitrage
+- Volume profile, order flow imbalance, accumulation/distribution
+- VIX strategies, ATR-based systems, volatility breakouts
+- Bid-ask spread, time-of-day effects, liquidity patterns
+- Factor investing: value, momentum, quality, low volatility
+- Calendar effects, intraday patterns, day-of-week anomalies
+- RSI divergence, MACD crossovers, Bollinger Band strategies
 
 Mix up your approach:
 - Sometimes use site filters (reddit, tradingview, forexfactory, blogs)
@@ -107,6 +172,21 @@ Mix up your approach:
 - Sometimes focus on backtest results and performance metrics
 - Sometimes look for academic or quantitative approaches
 - Keep queries diverse - don't repeat the same pattern!
+- Sometimes use professional quant sources (quantifiedstrategies.com, quantpedia.com, papers.ssrn.com)
+- Sometimes use site filters for professional sources (site:quantstart.com, site:robotwealth.com, site:alphaarchitect.com)
+- Sometimes search for academic papers with backtest results
+- Sometimes look for specific strategy types with parameters
+- Include terms like "backtest", "sharpe ratio", "returns", "edge", "alpha" when appropriate
+
+PROFESSIONAL QUANT SOURCES to consider (use site: filter):
+- site:quantifiedstrategies.com - Professional backtested strategies
+- site:quantpedia.com - Academic strategy research
+- site:papers.ssrn.com - Financial research papers
+- site:arxiv.org quantitative finance - Academic papers
+- site:seekingalpha.com - Professional analysis
+- site:quantstart.com - Algorithmic trading education
+- site:robotwealth.com - Systematic trading research
+- site:alphaarchitect.com - Factor investing research
 
 ⚠️ RESPONSE REQUIREMENTS ⚠️
 - MUST be in English language
@@ -118,6 +198,11 @@ Examples of CORRECT responses (English only):
 swing trading momentum strategy rules backtest results
 intraday volume profile trading system specific parameters
 correlation pairs trading cryptocurrency backtest performance
+site:quantifiedstrategies.com RSI divergence strategy backtest results
+site:quantpedia.com momentum factor investing cryptocurrency
+site:papers.ssrn.com pairs trading statistical arbitrage methods
+mean reversion oversold strategy site:robotwealth.com
+volatility breakout system backtest sharpe ratio site:quantstart.com
 """
 
 # Prompt for extracting individual strategies from scraped content
@@ -237,25 +322,25 @@ def setup_files():
 
     if not SEARCH_QUERIES_CSV.exists():
         cprint(f"📝 Creating search queries CSV at {SEARCH_QUERIES_CSV}", "yellow", "on_blue")
-        with open(SEARCH_QUERIES_CSV, 'w', newline='') as f:
+        with open(SEARCH_QUERIES_CSV, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(['timestamp', 'model', 'search_query'])
 
     if not SEARCH_RESULTS_CSV.exists():
         cprint(f"📊 Creating search results CSV at {SEARCH_RESULTS_CSV}", "white", "on_magenta")
-        with open(SEARCH_RESULTS_CSV, 'w', newline='') as f:
+        with open(SEARCH_RESULTS_CSV, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(['timestamp', 'search_query', 'title', 'url', 'snippet', 'content'])
 
     if not STRATEGIES_INDEX_CSV.exists():
         cprint(f"📚 Creating strategies index CSV at {STRATEGIES_INDEX_CSV}", "cyan", "on_blue")
-        with open(STRATEGIES_INDEX_CSV, 'w', newline='') as f:
+        with open(STRATEGIES_INDEX_CSV, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(['timestamp', 'search_query', 'url', 'title', 'filename', 'content_length'])
 
     if not FINAL_STRATEGIES_INDEX_CSV.exists():
         cprint(f"✨ Creating final strategies index CSV at {FINAL_STRATEGIES_INDEX_CSV}", "white", "on_green")
-        with open(FINAL_STRATEGIES_INDEX_CSV, 'w', newline='') as f:
+        with open(FINAL_STRATEGIES_INDEX_CSV, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(['timestamp', 'original_file', 'strategy_number', 'title', 'filename', 'source_url'])
 
@@ -523,25 +608,25 @@ def process_and_save_strategies(citations: List[Dict], search_query: str):
     return saved_files
 
 def generate_search_query_with_glm():
-    """Generate a search query using OpenRouter's GLM model"""
+    """Generate a search query using GROQ model"""
     try:
         print("\n" + "=" * min(70, TERM_WIDTH))
         cprint(" 🧙‍♂️ GENERATING SEARCH QUERY 🧙‍♂️ ", "white", "on_magenta")
         print("=" * min(70, TERM_WIDTH))
 
-        cprint("\n🔮 Connecting to OpenRouter API...", "cyan")
+        cprint("\n🔮 Connecting to GROQ API...", "cyan")
         time.sleep(0.5)
 
         # Print API configuration
         print("\n" + "─" * min(70, TERM_WIDTH))
         cprint("📡 API CONFIGURATION:", "white", "on_blue")
-        cprint(f"  Provider: OpenRouter", "yellow")
-        cprint(f"  Model: {GLM_MODEL}", "yellow")
-        cprint(f"  API Key: {'✓ Configured' if OPENROUTER_API_KEY else '✗ Missing'}", "green" if OPENROUTER_API_KEY else "red")
+        cprint(f"  Provider: GROQ (FREE)", "yellow")
+        cprint(f"  Model: {GROQ_QUERY_MODEL}", "yellow")
+        cprint(f"  API Key: {'✓ Configured' if os.getenv('GROQ_API_KEY') else '✗ Missing'}", "green" if os.getenv('GROQ_API_KEY') else "red")
         print("─" * min(70, TERM_WIDTH))
 
-        if not OPENROUTER_API_KEY:
-            cprint("❌ OPENROUTER_API_KEY not found in environment!", "white", "on_red")
+        if not os.getenv('GROQ_API_KEY'):
+            cprint("❌ GROQ_API_KEY not found in environment!", "white", "on_red")
             return None
 
         # Print the prompt we're sending
@@ -554,86 +639,47 @@ def generate_search_query_with_glm():
 
         animate_loading(2, "Sending prompt", "🔮")
 
-        # Prepare the API request
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/moon-dev-ai",
-            "X-Title": "Moon Dev Web Search Research Agent"
-        }
-
-        payload = {
-            "model": GLM_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": SEARCH_QUERY_GENERATION_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": "Generate one highly effective search query to find a unique trading strategy."
-                }
-            ],
-            "temperature": 0.7,
-            "max_tokens": 200
-        }
-
-        # Print the request details
+        # Use GROQ model via model_factory
         print("\n" + "─" * min(70, TERM_WIDTH))
         cprint("📋 REQUEST DETAILS:", "white", "on_magenta")
-        cprint(f"  URL: {url}", "yellow")
-        cprint(f"  Model: {payload['model']}", "yellow")
-        cprint(f"  Temperature: {payload['temperature']}", "yellow")
-        cprint(f"  Max Tokens: {payload['max_tokens']}", "yellow")
+        cprint(f"  Provider: GROQ (FREE)", "yellow")
+        cprint(f"  Model: {GROQ_QUERY_MODEL}", "yellow")
+        cprint(f"  Temperature: 0.7", "yellow")
+        cprint(f"  Max Tokens: 200", "yellow")
         print("─" * min(70, TERM_WIDTH))
 
         cprint("\n⏳ Waiting for AI response...", "white", "on_blue")
         animate_loading(1, "AI is thinking", "🧠")
 
-        # Make the API request
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        # Use GROQ directly
+        groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+
+        # Generate response
+        start_time = time.time()
+        response = groq_client.chat.completions.create(
+            model=GROQ_QUERY_MODEL,
+            messages=[
+                {"role": "system", "content": SEARCH_QUERY_GENERATION_PROMPT},
+                {"role": "user", "content": "Generate one highly effective search query to find a unique trading strategy."}
+            ],
+            temperature=0.7,
+            max_tokens=200
+        )
+        elapsed = time.time() - start_time
 
         # Print response status
         print("\n" + "─" * min(70, TERM_WIDTH))
-        cprint("📥 API RESPONSE STATUS:", "white", "on_green" if response.status_code == 200 else "on_red")
-        cprint(f"  Status Code: {response.status_code}", "green" if response.status_code == 200 else "red")
-        cprint(f"  Response Time: {response.elapsed.total_seconds():.2f}s", "yellow")
+        cprint("📥 API RESPONSE STATUS:", "white", "on_green")
+        cprint(f"  Status: Success", "green")
+        cprint(f"  Response Time: {elapsed:.2f}s", "yellow")
         print("─" * min(70, TERM_WIDTH))
 
-        if response.status_code != 200:
-            cprint(f"❌ API Error: {response.status_code}", "white", "on_red")
-            cprint(f"Response: {response.text}", "red")
+        if not response or not response.choices:
+            cprint("❌ No response from model!", "white", "on_red")
             return None
 
-        # Parse the response
-        response_json = response.json()
-
-        # Print the full raw response
-        print("\n" + "─" * min(70, TERM_WIDTH))
-        cprint("📦 RAW API RESPONSE (JSON):", "white", "on_blue")
-        print("─" * min(70, TERM_WIDTH))
-        print(json.dumps(response_json, indent=2))
-        print("─" * min(70, TERM_WIDTH))
-
         # Extract the search query
-        search_query = response_json['choices'][0]['message']['content'].strip()
-
-        # 🌙 Moon Dev: Fallback to reasoning field if content is empty (GLM models do this)
-        if not search_query or len(search_query) < 5:
-            reasoning = response_json['choices'][0]['message'].get('reasoning', '').strip()
-            if reasoning:
-                cprint("\n🔄 Content field empty, extracting from reasoning field...", "yellow")
-                # Try to extract a search query from the reasoning (look for quoted text or last line)
-                import re
-                # Look for text in quotes
-                quoted = re.findall(r'"([^"]+)"', reasoning)
-                if quoted:
-                    search_query = quoted[-1]  # Use last quoted string
-                else:
-                    # Use the last substantial line
-                    lines = [line.strip() for line in reasoning.split('\n') if line.strip()]
-                    search_query = lines[-1] if lines else ""
+        search_query = response.choices[0].message.content.strip()
 
         # Clean up the search query (remove any thinking tags or extra formatting)
         if "<think>" in search_query and "</think>" in search_query:
@@ -655,6 +701,13 @@ def generate_search_query_with_glm():
             cprint("Try switching to a different model in the configuration.", "cyan")
             return None
 
+        # CRITICAL: Validate that response is in English only
+        if not is_english_text(search_query):
+            cprint("\n⚠️ AI responded in non-English language!", "white", "on_red")
+            cprint(f"Detected non-English text: {search_query[:100]}...", "red")
+            cprint("Rejecting response and trying again...", "yellow")
+            return None
+
         # Display the generated search query
         print("\n" + "=" * min(70, TERM_WIDTH))
         cprint("✨ GENERATED SEARCH QUERY:", "white", "on_green")
@@ -671,12 +724,6 @@ def generate_search_query_with_glm():
 
         return search_query
 
-    except requests.exceptions.Timeout:
-        cprint("❌ Request timed out after 30 seconds", "white", "on_red")
-        return None
-    except requests.exceptions.RequestException as e:
-        cprint(f"❌ Request error: {str(e)}", "white", "on_red")
-        return None
     except Exception as e:
         cprint(f"❌ Error generating search query: {str(e)}", "white", "on_red")
         import traceback
@@ -853,9 +900,9 @@ def log_search_query(search_query: str):
 
     cprint("\n💾 Logging search query to CSV...", "white", "on_blue")
 
-    with open(SEARCH_QUERIES_CSV, 'a', newline='') as f:
+    with open(SEARCH_QUERIES_CSV, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow([timestamp, GLM_MODEL, search_query])
+        writer.writerow([timestamp, f"groq/{GROQ_QUERY_MODEL}", search_query])
 
     cprint("✅ Search query logged!", "white", "on_green")
 
@@ -868,7 +915,7 @@ def log_search_results(search_query: str, search_data: Dict):
     # Log citations
     if search_data and 'citations' in search_data:
         for citation in search_data['citations']:
-            with open(SEARCH_RESULTS_CSV, 'a', newline='') as f:
+            with open(SEARCH_RESULTS_CSV, 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow([
                     timestamp,
@@ -883,7 +930,7 @@ def log_search_results(search_query: str, search_data: Dict):
     if search_data and 'results' in search_data:
         for result in search_data['results']:
             if result['type'] == 'text':
-                with open(SEARCH_RESULTS_CSV, 'a', newline='') as f:
+                with open(SEARCH_RESULTS_CSV, 'a', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
                     writer.writerow([
                         timestamp,
@@ -898,12 +945,12 @@ def log_search_results(search_query: str, search_data: Dict):
 
 def extract_strategies_with_glm(md_filepath: Path, source_url: str = "") -> Optional[Dict]:
     """
-    Use GLM to extract individual strategies from a raw markdown file
+    Use GROQ to extract individual strategies from a raw markdown file
     Returns JSON with strategies array
     """
     try:
         print("\n" + "=" * min(70, TERM_WIDTH))
-        cprint(" 🧠 EXTRACTING STRATEGIES WITH GLM 🧠 ", "white", "on_magenta")
+        cprint(" 🧠 EXTRACTING STRATEGIES WITH GROQ 🧠 ", "white", "on_magenta")
         print("=" * min(70, TERM_WIDTH))
 
         cprint(f"\n📄 Reading file: {md_filepath.name}", "cyan")
@@ -914,64 +961,43 @@ def extract_strategies_with_glm(md_filepath: Path, source_url: str = "") -> Opti
 
         cprint(f"📏 File length: {len(content)} characters", "yellow")
 
-        # Prepare API request
-        url = "https://openrouter.ai/api/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/moon-dev-ai",
-            "X-Title": "Moon Dev Strategy Extraction Agent"
-        }
-
-        payload = {
-            "model": GLM_MODEL,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": STRATEGY_EXTRACTION_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": f"Extract all trading strategies from this content:\n\n{content}"
-                }
-            ],
-            "temperature": 0.5,
-            "max_tokens": 4000
-        }
-
         print("\n" + "─" * min(70, TERM_WIDTH))
         cprint("📡 API CONFIGURATION:", "white", "on_blue")
-        cprint(f"  Model: {GLM_MODEL}", "yellow")
+        cprint(f"  Provider: GROQ (FREE)", "yellow")
+        cprint(f"  Model: {GROQ_EXTRACTION_MODEL}", "yellow")
         cprint(f"  Temperature: 0.5", "yellow")
         cprint(f"  Max Tokens: 4000", "yellow")
         print("─" * min(70, TERM_WIDTH))
 
-        cprint("\n⏳ Sending to GLM for extraction...", "cyan")
+        cprint("\n⏳ Sending to GROQ for extraction...", "cyan")
         animate_loading(2, "Extracting strategies", "🧠")
 
-        # Make API request
-        response = requests.post(url, headers=headers, json=payload, timeout=60)
+        # Use GROQ directly
+        groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
 
-        cprint(f"\n✅ Response: {response.status_code} ({response.elapsed.total_seconds():.2f}s)",
-               "green" if response.status_code == 200 else "red")
+        # Generate response
+        start_time = time.time()
+        response = groq_client.chat.completions.create(
+            model=GROQ_EXTRACTION_MODEL,
+            messages=[
+                {"role": "system", "content": STRATEGY_EXTRACTION_PROMPT},
+                {"role": "user", "content": f"Extract all trading strategies from this content:\n\n{content}"}
+            ],
+            temperature=0.5,
+            max_tokens=4000
+        )
+        elapsed = time.time() - start_time
 
-        if response.status_code != 200:
-            cprint(f"❌ API Error: {response.text}", "red")
+        cprint(f"\n✅ Response received ({elapsed:.2f}s)", "green")
+
+        if not response or not response.choices:
+            cprint("❌ No response from model!", "white", "on_red")
             return None
 
-        # Parse response
-        response_json = response.json()
-        raw_content = response_json['choices'][0]['message']['content'].strip()
-
-        # 🌙 Moon Dev: Fallback to reasoning field if content is empty (GLM models do this)
-        if not raw_content or len(raw_content) < 10:
-            reasoning = response_json['choices'][0]['message'].get('reasoning', '').strip()
-            if reasoning:
-                cprint("\n🔄 Content field empty, using reasoning field instead...", "yellow")
-                raw_content = reasoning
+        raw_content = response.choices[0].message.content.strip()
 
         print("\n" + "─" * min(70, TERM_WIDTH))
-        cprint("📦 RAW GLM RESPONSE:", "white", "on_blue")
+        cprint("📦 RAW GROQ RESPONSE:", "white", "on_blue")
         print("─" * min(70, TERM_WIDTH))
         print(raw_content[:500] + "..." if len(raw_content) > 500 else raw_content)
         print("─" * min(70, TERM_WIDTH))

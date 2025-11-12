@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:\\Users\\oia89\\Miniconda3\\Scripts\\conda.exe\" env list)",
+      "Bash(C:Python313python.exe -c \"import PyPDF2; print(''PyPDF2 version:'', PyPDF2.__version__); print(''Import successful!'')\")",
+      "Bash(\"C:\\Python313\\python.exe\" -c \"import PyPDF2; print(''PyPDF2 version:'', PyPDF2.__version__)\")",
+      "Bash(conda env:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(timeout 15 python:*)",
+      "Bash(ollama list:*)",
+      "Bash(timeout 30 python:*)",
+      "Bash(timeout 20 python:*)",
+      "Bash(curl:*)",
+      "Bash(tasklist:*)",
+      "Bash(python:*)",
+      "Bash(timeout 150 python:*)",
+      "Bash(timeout 10 python:*)",
+      "Bash(timeout 120 python:*)",
+      "Bash(timeout 180 python:*)",
+      "Bash(git add:*)",
+      "Bash(powershell:*)",
+      "Bash(del:*)",
+      "Bash(rm:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

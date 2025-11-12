@@ -1,18 +1,25 @@
 '''
 🌙 Moon Dev's Research Agent 🌙
-This agent automatically generates trading strategy ideas and logs them to both CSV and ideas.txt
+This agent automatically generates EVIDENCE-BASED trading strategy ideas from professional quant research
 
 Features:
-- Rotates between multiple AI models (DeepSeek-R1, llama3.2, gemma:2b)
+- Uses FREE GROQ models (llama-3.3-70b, qwen3-32b, llama-3.1-8b) with rotation
+- Focuses on proven strategies from quantifiedstrategies.com, quantpedia.com, academic papers
+- Generates strategies with specific parameters, entry/exit rules, and risk management
 - Checks for duplicate ideas before adding them
-- Logs ideas to a CSV file with timestamps and model info
-- Appends new ideas to the ideas.txt file for RBI Agent processing
-- Runs in a continuous loop generating new ideas
+- Logs ideas to CSV file with timestamps and model info
+- Appends new ideas to ideas.txt for RBI Agent processing
+- Sleeps for 4 hours after generating 50 strategies (prevents overload)
+- Runs in continuous loop generating evidence-based strategies
+
+Professional Sources Referenced:
+- quantifiedstrategies.com - Backtested strategies
+- quantpedia.com - Academic strategy research
+- papers.ssrn.com - Financial research papers
+- robotwealth.com - Systematic trading research
+- alphaarchitect.com - Factor investing research
 
 Created with ❤️ by Moon Dev
-
-[] be able to search youtube
-[] be able to search the web 
 '''
 
 # PROMPT - Edit this to change the type of ideas generated
@@ -27,15 +34,32 @@ Focus on one of these areas:
 - Volume patterns
 - Volatility-based strategies
 - Liquidation events
-- technical indicators that can be backtested
+- Technical indicators that can be backtested
+- RSI divergence, moving average crossovers, breakout systems, relative strength
+- Bollinger Band reversals, oversold/overbought conditions, pairs trading, statistical arbitrage
+- Volume profile breakouts, accumulation/distribution, OBV divergence, volume-weighted indicators
+- ATR-based position sizing, volatility breakouts, VIX strategies, Bollinger Band squeeze
+- Time-of-day effects, day-of-week patterns, intraday momentum, opening range breakout
+- Value momentum combinations, quality factors, low volatility anomalies
+- Cup and handle, head and shoulders, double tops/bottoms with volume confirmation
+- Multi-timeframe: Higher timeframe trend + lower timeframe entry signals
 
+OPTIONAL - Consider drawing inspiration from professional quant sources:
+- quantifiedstrategies.com - Backtested strategies
+- quantpedia.com - Academic strategy research
+- papers.ssrn.com - Financial research papers
+- robotwealth.com - Systematic trading research
+- alphaarchitect.com - Factor investing research
 
-Your response should be ONLY the strategy idea text - no explanations, no introductions, 
+Your response should be ONLY the strategy idea text - no explanations, no introductions,
 no numbering, and no extra formatting. Just the raw idea in 1-2 sentences.
 
 Example good responses:
 "A mean-reversion strategy that enters when RSI diverges from price action while volume decreases, with exits based on ATR multiples."
 "Identify market regime shifts using a combination of volatility term structure and options skew, trading only when both align."
+"RSI divergence mean reversion: Enter long when RSI makes higher low while price makes lower low on 15m chart, RSI below 30. Exit at 2:1 reward-risk using ATR-based stops, or when RSI crosses above 70. Position size 2% of capital."
+"Moving average momentum with volume confirmation: Buy when 20 EMA crosses above 50 EMA on 1H chart AND volume exceeds 1.5x 20-period average. Exit when price closes below 20 EMA or -2 ATR stop hit. Max 3 concurrent positions."
+"Bollinger Band squeeze breakout: Enter when bandwidth contracts to 6-month low, then breaks either band with volume spike >2x average. Stop loss at opposite band, profit target at 2.5x band width. Trade only during first 2 hours of session."
 """
 
 import os
@@ -50,11 +74,26 @@ import sys
 import threading
 import shutil
 import textwrap
+from dotenv import load_dotenv
+import io
 
-# Import model factory from RBI agent
-import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.models import model_factory
+# Force UTF-8 encoding for stdout/stderr on Windows to handle Unicode characters
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
+# Load environment variables FIRST before any API calls
+load_dotenv()
+
+# Import GROQ directly (bypassing model_factory emoji issues on Windows)
+try:
+    from groq import Groq
+    print("[OK] GROQ library imported successfully")
+except ImportError as e:
+    print(f"[ERROR] Could not import groq: {e}")
+    print("[ERROR] Install with: pip install groq")
+    import sys
+    sys.exit(1)
 
 # Define paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent  # Points to project root
@@ -62,14 +101,15 @@ DATA_DIR = PROJECT_ROOT / "src" / "data" / "rbi_pp_multi"
 IDEAS_TXT = DATA_DIR / "ideas.txt"
 IDEAS_CSV = DATA_DIR / "strategy_ideas.csv"
 
-# Model configurations
+# Model configurations - 100% FREE GROQ MODELS (VERIFIED & WORKING)
+# Using GROQ API for fast, free, cloud-based inference
 MODELS = [
-    # {"type": "ollama", "name": "DeepSeek-R1:latest"},
-    # {"type": "ollama", "name": "llama3.2:latest"},
-    # {"type": "ollama", "name": "gemma:2b"}
-    {"type": "deepseek", "name": "deepseek-chat"},
-    {"type": "deepseek", "name": "deepseek-reasoner"}
+    {"type": "groq", "name": "llama-3.3-70b-versatile"},     # 70B - Best quality for research
+    {"type": "groq", "name": "qwen/qwen3-32b"},              # 32B - Excellent reasoning
+    {"type": "groq", "name": "llama-3.1-8b-instant"},        # 8B - Ultra-fast
 ]
+# All models tested and verified working with fresh GROQ_API_KEY!
+# Free tier: 100k tokens/day, 30 requests/min
 
 # Fun emojis for animation
 EMOJIS = ["🚀", "💫", "✨", "🌟", "💎", "🔮", "🌙", "⭐", "🌠", "💰", "📈", "🧠"]
@@ -177,7 +217,7 @@ def load_existing_ideas():
     """Load existing ideas from CSV to check for duplicates"""
     if not IDEAS_CSV.exists():
         return set()
-    
+
     try:
         df = pd.read_csv(IDEAS_CSV)
         if 'idea' in df.columns:
@@ -189,6 +229,55 @@ def load_existing_ideas():
     except Exception as e:
         cprint(f"⚠️ Error loading existing ideas: {str(e)}", "red")
         return set()
+
+def count_ideas_in_file():
+    """Count the number of ideas in ideas.txt"""
+    if not IDEAS_TXT.exists():
+        return 0
+
+    try:
+        with open(IDEAS_TXT, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        # Count non-empty lines that aren't comments
+        idea_count = sum(1 for line in lines if line.strip() and not line.strip().startswith('#'))
+        return idea_count
+    except Exception as e:
+        cprint(f"⚠️ Error counting ideas: {str(e)}", "red")
+        return 0
+
+def check_and_sleep_if_needed():
+    """Check if we have 50+ ideas and sleep for 4 hours if so"""
+    idea_count = count_ideas_in_file()
+
+    if idea_count >= 50:
+        cprint("\n" + "=" * min(60, TERM_WIDTH), "white", "on_blue")
+        cprint(" 🎯 MILESTONE REACHED: 50 STRATEGIES! 🎯 ", "white", "on_green")
+        cprint("=" * min(60, TERM_WIDTH), "white", "on_blue")
+        cprint(f"\n📊 Total strategies generated: {idea_count}", "yellow")
+        cprint("😴 Taking a 4-hour break to let the RBI agent process these strategies...", "cyan")
+        cprint("⏰ Will resume at: " + datetime.fromtimestamp(time.time() + 14400).strftime("%Y-%m-%d %H:%M:%S"), "magenta")
+
+        # Sleep for 4 hours (14400 seconds)
+        sleep_duration = 14400  # 4 hours in seconds
+
+        # Show countdown for first minute, then sleep silently
+        for i in range(60):
+            remaining_hours = (sleep_duration - i) / 3600
+            remaining_mins = ((sleep_duration - i) % 3600) / 60
+            clear_line()
+            print(f"\r{colored(f' 💤 Sleeping: {remaining_hours:.1f} hours ({remaining_mins:.0f} mins) remaining... ', 'white', 'on_magenta')}", end="", flush=True)
+            time.sleep(1)
+
+        # Sleep for remaining time silently
+        time.sleep(sleep_duration - 60)
+
+        cprint("\n\n⏰ WAKE UP! 4-hour break complete!", "white", "on_green")
+        cprint("🔄 Resuming strategy generation...\n", "cyan")
+
+        return True
+
+    return False
 
 def is_duplicate(idea, existing_ideas):
     """Check if an idea is a duplicate (case-insensitive)"""
@@ -236,30 +325,30 @@ def generate_idea(model_config):
             time.sleep(0.7)  # Show each message briefly
             animate_loading(1, f"{msg}", emoji)
         
-        # Get model from factory
-        model = model_factory.get_model(model_config["type"], model_config["name"])
-        if not model:
-            cprint(f"❌ Could not initialize {model_config['type']} model!", "white", "on_red")
-            return None
-        
+        # Use GROQ directly
+        groq_client = Groq(api_key=os.getenv('GROQ_API_KEY'))
+
         # Show generation in progress message
         cprint(f"\n⏳ GENERATING TRADING STRATEGY IDEA...", "black", "on_white")
         time.sleep(0.5)  # Pause for readability
-        
-        # Generate response
-        response = model.generate_response(
-            system_prompt=IDEA_GENERATION_PROMPT,
-            user_content="Generate one unique trading strategy idea.",
-            temperature=0.8  # Higher temperature for more creativity
+
+        # Generate response using GROQ
+        response = groq_client.chat.completions.create(
+            model=model_config["name"],
+            messages=[
+                {"role": "system", "content": IDEA_GENERATION_PROMPT},
+                {"role": "user", "content": "Generate one unique trading strategy idea."}
+            ],
+            temperature=0.8,  # Higher temperature for more creativity
+            max_tokens=500
         )
-        
-        # Handle different response types
-        if isinstance(response, str):
-            idea = response
-        elif hasattr(response, 'content'):
-            idea = response.content
+
+        # Extract idea from response
+        if response and response.choices:
+            idea = response.choices[0].message.content
         else:
-            idea = str(response)
+            cprint(f"❌ No response from GROQ model!", "white", "on_red")
+            return None
         
         # Clean up the idea
         idea = clean_idea(idea)
@@ -423,17 +512,20 @@ def run_idea_generation_loop(interval=10):
     
     try:
         while True:
+            # Check if we need to sleep for 4 hours (100+ ideas)
+            check_and_sleep_if_needed()
+
             # Load existing ideas to check for duplicates
             existing_ideas = load_existing_ideas()
             cprint(f"📚 Loaded {len(existing_ideas)} existing ideas for duplicate checking", "white", "on_blue")
             time.sleep(1)  # Pause for readability
-            
+
             # Select a random model
             model_config = random.choice(MODELS)
-            
+
             # Generate idea
             idea = generate_idea(model_config)
-            
+
             if idea:
                 # Check if it's a duplicate
                 if is_duplicate(idea, existing_ideas):
@@ -442,7 +534,7 @@ def run_idea_generation_loop(interval=10):
                 else:
                     # Log the new idea
                     log_idea(idea, model_config)
-            
+
             # Fun waiting animation - exactly 10 seconds
             cprint(f"\n⏱️ COOLDOWN PERIOD ACTIVATED", "white", "on_blue")
             time.sleep(0.5)  # Pause for readability
@@ -492,10 +584,13 @@ def test_run(num_ideas=1, interval=10):
     time.sleep(1)  # Pause for readability
     
     try:
+        # Check if we need to sleep for 4 hours (100+ ideas)
+        check_and_sleep_if_needed()
+
         existing_ideas = load_existing_ideas()
         cprint(f"📚 Loaded {len(existing_ideas)} existing ideas for duplicate checking", "white", "on_blue")
         time.sleep(1)  # Pause for readability
-        
+
         ideas_generated = 0
         while ideas_generated < num_ideas:
             # Select a random model

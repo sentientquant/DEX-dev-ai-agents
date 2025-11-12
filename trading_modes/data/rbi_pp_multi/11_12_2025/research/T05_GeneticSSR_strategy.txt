@@ -1,0 +1,13 @@
+STRATEGY_NAME: GeneticSSR
+
+INDICATORS_REQUIRED:
+- [Technical indicators (unspecified; optimized via genetic algorithm for parameters)]
+
+ENTRY_CONDITIONS:
+[Trading signals generated from optimized technical indicators and rules; specific thresholds determined by GA to maximize Sharpe and Sterling Ratio]
+
+EXIT_CONDITIONS:
+[Exits based on optimized indicator signals; designed to minimize drawdowns via SSR cost function]
+
+STRATEGY_DETAILS:
+This strategy employs a genetic algorithm (GA) to evolve and optimize the parameters of unspecified technical indicators and associated trading rules, with the objective of generating buy/sell signals that maximize the Sharpe Ratio (risk-adjusted return) and Sterling Ratio (return per unit of maximum drawdown). It is tailored for intraday trading on major forex pairs, such as the 5-minute AUDUSD timeframe, where backtested results show up to 320% annualized returns. The GA uses a novel cost function focused on SSR to prioritize low-variance performance and reduced drawdown magnitude, iteratively selecting fitter parameter sets (e.g., periods, thresholds) across populations of candidate strategies. No specific indicators are detailed, implying flexibility in selection (e.g., common ones like RSI, MACD, or moving averages could be optimized), but all signals emphasize risk-adjusted efficiency over raw returns. Position sizing and stops are implicitly handled via the optimization to control variance.

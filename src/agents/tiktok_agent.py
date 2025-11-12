@@ -102,18 +102,34 @@ import time
 from pathlib import Path
 from termcolor import cprint
 from datetime import datetime
-import Quartz
 import sys
 import os
-from Quartz import CoreGraphics as CG
-import AppKit
 import subprocess
 import traceback
 import random
 import webbrowser
 import pandas as pd
 import base64
+
+# Get the project root directory
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+# Add project root to Python path for imports
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+# Now import project modules
 from src.models import model_factory  # Import Moon Dev's model factory
+
+# Platform-specific imports (macOS only)
+try:
+    import Quartz
+    from Quartz import CoreGraphics as CG
+    import AppKit
+    MACOS_AVAILABLE = True
+except ImportError:
+    MACOS_AVAILABLE = False
+    cprint("⚠️ Warning: macOS-specific libraries not available. This agent requires macOS.", "yellow")
 
 # ===== CONFIGURATION (ADJUST THESE FOR YOUR SETUP) =====
 

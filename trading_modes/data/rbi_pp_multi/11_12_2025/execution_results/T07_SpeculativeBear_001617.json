@@ -1,0 +1,8 @@
+{
+  "success": false,
+  "return_code": 1,
+  "stdout": "\n\ud83c\udf19 Running initial backtest for stats extraction...\n\ud83c\udf19 SpeculativeBear initialized - No indicators loaded \u2728\n",
+  "stderr": "\nBacktest.run:   0%|          | 0/134470 [00:00<?, ?bar/s]\n                                                         \nTraceback (most recent call last):\n  File \"C:\\Users\\oia89\\OneDrive\\Desktop\\DEX-dev-ai-agents\\trading_modes\\data\\rbi_pp_multi\\11_12_2025\\backtests_package\\T07_SpeculativeBear_PKG.py\", line 70, in <module>\n    stats = bt.run()\n  File \"C:\\Users\\oia89\\AppData\\Roaming\\Python\\Python313\\site-packages\\backtesting\\backtesting.py\", line 1339, in run\n    strategy.next()\n    ~~~~~~~~~~~~~^^\n  File \"C:\\Users\\oia89\\OneDrive\\Desktop\\DEX-dev-ai-agents\\trading_modes\\data\\rbi_pp_multi\\11_12_2025\\backtests_package\\T07_SpeculativeBear_PKG.py\", line 38, in next\n    size = self.broker.getcash() / entry_price\n           ^^^^^^^^^^^\nAttributeError: 'SpeculativeBear' object has no attribute 'broker'. Did you mean: '_broker'?\n",
+  "execution_time": 2.841968,
+  "timestamp": "2025-11-12T00:16:17.098493"
+}
