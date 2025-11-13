@@ -161,6 +161,12 @@ binance_trades.csv
 *.csv.gz
 *.parquet
 
+# OHLCV data files (can be large - regenerate as needed)
+src/data/ohlcv/*.csv
+**/ohlcv/*.csv
+# Keep only small sample files under 10MB
+!src/data/ohlcv/*-1h.csv
+
 # Ignore large video files (assistant)
 src/data/chat_agent/*.mov
 
