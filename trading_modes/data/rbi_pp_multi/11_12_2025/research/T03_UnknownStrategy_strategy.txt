@@ -1,0 +1,13 @@
+VolatilityStraddle
+
+INDICATORS_REQUIRED:
+- None (this is a pure options strategy without technical indicators)
+
+ENTRY_CONDITIONS:
+No specific entry conditions mentioned; typically entered when expecting significant volatility or an upcoming event (e.g., earnings), by simultaneously buying an at-the-money call and put with the same strike and expiration.
+
+EXIT_CONDITIONS:
+No specific exit conditions mentioned; typically exited by selling both options before expiration, often when the underlying asset moves sharply in one direction to profit from one leg while limiting loss on the other, or if time decay erodes value.
+
+STRATEGY_DETAILS:
+The Long Straddle is a non-directional options strategy designed to profit from large price movements in the underlying asset, regardless of direction, by capitalizing on increased volatility. It involves purchasing both a call option and a put option with identical strike prices (usually at-the-money) and the same expiration date. The maximum loss is limited to the total premium paid for both options, which occurs if the asset price remains stable at expiration. Profits are theoretically unlimited on the upside (via the call) or substantial on the downside (via the put), but the strategy benefits from volatility expansion while suffering from theta (time decay) if the asset doesn't move enough. No technical indicators are used; entry is discretionary based on anticipated volatility events. Position sizing should account for the high cost of premiums, and it's best suited for short-term trades around catalysts like news releases.

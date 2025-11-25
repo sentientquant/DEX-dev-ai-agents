@@ -1,10 +1,19 @@
 """
-🌙 Moon Dev's DeepSeek Model Implementation
-Built with love by Moon Dev 🚀
+[MOON] Moon Dev's DeepSeek Model Implementation
+Built with love by Moon Dev
 """
 
 from openai import OpenAI
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from .base_model import BaseModel, ModelResponse
 
 class DeepSeekModel(BaseModel):
@@ -29,9 +38,9 @@ class DeepSeekModel(BaseModel):
                 api_key=self.api_key,
                 base_url=self.base_url
             )
-            cprint(f"✨ Initialized DeepSeek model: {self.model_name}", "green")
+            cprint(f"[OK] Initialized DeepSeek model: {self.model_name}", "green")
         except Exception as e:
-            cprint(f"❌ Failed to initialize DeepSeek model: {str(e)}", "red")
+            cprint(f"[ERROR] Failed to initialize DeepSeek model: {str(e)}", "red")
             self.client = None
     
     def generate_response(self, 
@@ -62,7 +71,7 @@ class DeepSeekModel(BaseModel):
             )
             
         except Exception as e:
-            cprint(f"❌ DeepSeek generation error: {str(e)}", "red")
+            cprint(f"[ERROR] DeepSeek generation error: {str(e)}", "red")
             raise
     
     def is_available(self) -> bool:

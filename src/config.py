@@ -63,7 +63,22 @@ BREAKOUT_PRICE = .0001 # NOT USED YET 1/5/25
 SLEEP_AFTER_CLOSE = 600  # Prevent overtrading
 
 MAX_LOSS_GAIN_CHECK_HOURS = 12  # How far back to check for max loss/gain limits (in hours)
-SLEEP_BETWEEN_RUNS_MINUTES = 15  # How long to sleep between agent runs 🕒
+SLEEP_BETWEEN_RUNS_MINUTES = 15  # How long to sleep between agent runs (in minutes)
+
+# Two-Engine Trading System Configuration
+EXECUTE_TRADES = False  # SAFETY: Set to True to enable live trading, False for dry-run mode
+TRADING_INTERVAL_MINUTES = 15  # How often to run trading cycle (5, 15, 30, 60, 240, 360, 1440)
+
+# Available intervals with descriptions:
+TRADING_INTERVALS = {
+    5: '5 minutes - High frequency',
+    15: '15 minutes - Default (recommended)',
+    30: '30 minutes - Medium frequency',
+    60: '1 hour - Lower frequency',
+    240: '4 hours - Swing trading',
+    360: '6 hours - Position trading',
+    1440: '1 day - Long-term holds'
+}
 
 
 # Max Loss/Gain Settings FOR RISK AGENT 1/5/25
@@ -122,6 +137,26 @@ REALTIME_CLIPS_LENGTH = 2  # Minutes to analyze per check
 REALTIME_CLIPS_AI_MODEL = 'groq'  # Model type: groq, openai, claude, deepseek, xai, ollama
 REALTIME_CLIPS_AI_MODEL_NAME = None  # None = use default for model type
 REALTIME_CLIPS_TWITTER = True  # Auto-open Twitter compose after clip
+
+# 📊 Sentiment Agent Configuration
+# Tokens to track for sentiment (matching your actual trading pairs)
+SENTIMENT_TOKENS = ['BTC', 'ETH', 'SOL']  # BTCUSDT, ETHUSDT, SOLUSDT
+SENTIMENT_TWEETS_PER_TOKEN = 20  # Number of tweets per token
+SENTIMENT_REDDIT_POSTS_PER_TOKEN = 20  # Number of Reddit posts per token
+
+# Twitter account rotation (3 accounts = 300 tweets/month)
+SENTIMENT_TWITTER_ROTATION_DAYS = 10  # Rotate accounts every 10 days
+SENTIMENT_TWITTER_BUDGET_PER_ACCOUNT = 100  # Free tier limit per account
+
+# Subreddits to monitor
+SENTIMENT_SUBREDDITS = {
+    'BTC': ['Bitcoin', 'CryptoCurrency', 'BitcoinMarkets'],
+    'ETH': ['ethereum', 'ethtrader', 'CryptoCurrency'],
+    'SOL': ['solana', 'CryptoCurrency', 'SolanaMarkets']
+}
+
+# Sentiment analysis frequency
+SENTIMENT_CHECK_INTERVAL_MINUTES = 15  # How often to run sentiment analysis
 
 # Future variables (not active yet) 🔮
 sell_at_multiple = 3

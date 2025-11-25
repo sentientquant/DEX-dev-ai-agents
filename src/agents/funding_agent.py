@@ -20,7 +20,16 @@ import os
 import pandas as pd
 import time
 from datetime import datetime, timedelta
-from termcolor import colored, cprint
+# Make termcolor optional
+try:
+    from termcolor import colored, cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from dotenv import load_dotenv
 import openai
 import anthropic
@@ -28,6 +37,7 @@ from pathlib import Path
 from src import nice_funcs as n
 from src import nice_funcs_hyperliquid as hl
 from src.agents.api import MoonDevAPI
+import requests  # For Binance Free API
 from collections import deque
 from src.agents.base_agent import BaseAgent
 import traceback
@@ -46,14 +56,11 @@ POSITIVE_THRESHOLD = 20  # AI Run & Alert if annual rate above 20%
 TIMEFRAME = '15m'  # Candlestick timeframe
 LOOKBACK_BARS = 100  # Number of candles to analyze
 
-# Symbol to name mapping
+# Symbol to name mapping - Main trading pairs
 SYMBOL_NAMES = {
-    # 'BTC': 'Bitcoin',
-    # 'ETH': 'Ethereum',
-    # 'SOL': 'Solana',
-    # 'WIF': 'Wif',
-    # 'BNB': 'BNB',
-    'FARTCOIN': 'Fart Coin'
+    'BTC': 'Bitcoin',
+    'ETH': 'Ethereum',
+    'SOL': 'Solana'
 }
 
 # AI Settings - Override config.py if set
@@ -131,7 +138,14 @@ class FundingAgent(BaseAgent):
             self.deepseek_client = None
             cprint(f"🎯 Moon Dev's Funding Agent using Claude model: {self.active_model}!", "green")
         
-        self.api = MoonDevAPI()
+        # DISABLED - Using Binance Free API instead
+        # self.api = MoonDevAPI()
+        self.api = None  # Not needed - using Binance
+
+        # Binance API endpoint (FREE - no API key required)
+        self.binance_funding_url = "https://fapi.binance.com/fapi/v1/fundingRate"
+
+        cprint("✅ Using Binance Free API (no MoonDev API key required)", "green")
         
         # Create data directories if they don't exist
         self.audio_dir = PROJECT_ROOT / "src" / "audio"
@@ -391,25 +405,62 @@ class FundingAgent(BaseAgent):
             self.funding_history = pd.DataFrame(columns=['timestamp', 'symbol', 'funding_rate', 'annual_rate'])
             
     def _get_current_funding(self):
-        """Get current funding rate data"""
+        """Get current funding rate data from Binance Free API"""
         try:
-            df = self.api.get_funding_data()
-            
-            if df is not None and not df.empty:
-                # Get latest data for each symbol
-                current_data = df.sort_values('event_time').groupby('symbol').last().reset_index()
-                
-                # Ensure funding_rate and yearly_funding_rate are numeric
-                numeric_cols = ['funding_rate', 'yearly_funding_rate']
-                for col in numeric_cols:
-                    current_data[col] = pd.to_numeric(current_data[col], errors='coerce')
-                
-                # Rename yearly_funding_rate to annual_rate for consistency
-                current_data = current_data.rename(columns={'yearly_funding_rate': 'annual_rate'})
-                
+            cprint("\n🔍 Fetching funding rates from Binance Free API...", "cyan")
+
+            # Get funding rates for each symbol in SYMBOL_NAMES
+            funding_data_list = []
+
+            for symbol in SYMBOL_NAMES.keys():
+                # Convert symbol format (e.g., "BTC" -> "BTCUSDT")
+                binance_symbol = f"{symbol}USDT"
+
+                try:
+                    response = requests.get(
+                        self.binance_funding_url,
+                        params={"symbol": binance_symbol, "limit": 1},
+                        timeout=10
+                    )
+
+                    if response.status_code == 200:
+                        funding_list = response.json()
+
+                        if len(funding_list) > 0:
+                            latest = funding_list[-1]
+                            funding_rate_8h = float(latest['fundingRate'])
+
+                            # Calculate annual rate (3 periods/day * 365 days * 100 for %)
+                            annual_rate = funding_rate_8h * 3 * 365 * 100
+
+                            funding_data_list.append({
+                                'symbol': symbol,
+                                'funding_rate': funding_rate_8h,
+                                'annual_rate': annual_rate,
+                                'event_time': datetime.fromtimestamp(latest['fundingTime']/1000)
+                            })
+
+                            print(f"  ✅ {symbol}: {annual_rate:.2f}% annual")
+                        else:
+                            print(f"  ⚠️ {symbol}: No funding data")
+
+                    else:
+                        print(f"  ❌ {symbol}: HTTP {response.status_code}")
+
+                except requests.exceptions.Timeout:
+                    print(f"  ❌ {symbol}: Timeout")
+                except Exception as e:
+                    print(f"  ❌ {symbol}: {str(e)}")
+
+            # Convert to DataFrame
+            if funding_data_list:
+                current_data = pd.DataFrame(funding_data_list)
+                cprint(f"✅ Fetched funding rates for {len(current_data)} symbols", "green")
                 return current_data
-            return None
-            
+            else:
+                cprint("❌ No funding data retrieved", "red")
+                return None
+
         except Exception as e:
             print(f"❌ Error getting funding data: {str(e)}")
             traceback.print_exc()

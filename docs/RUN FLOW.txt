@@ -1,0 +1,78 @@
+These agents exist but are NOT integrated into rbi_agent_pp_multi.py: 
+
+Market Analysis: sentiment_agent, whale_agent, funding_agent, liquidation_agent, chartanalysis_agent 
+
+Trading: trading_agent, strategy_agent, risk_agent, copybot_agent, sniper_agent, solana_agent 
+
+
+Other RBI Variants: rbi_agent (v1), rbi_agent_v2, rbi_agent_v3, rbi_agent_pp, rbi_batch_backtester
+
+
+claude --dangerously-skip-permissions
+=========================================================
+Grok, Xai and Ollama
+
+cd C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents
+.\venv\Scripts\Activate.ps1
+
+Usage:
+# First run or resume interrupted download
+python src/data/ohlcv/fetch_all_candles_smart.py
+
+# Daily update (only fetches new candles)
+python src/data/ohlcv/fetch_all_candles_smart.py --update
+
+# 3. Generate strategies
+python src/agents/websearch_agent.py --once
+python src/agents/research_agent.py --test
+python src/agents/rbi_agent_pp_multi.py
+
+
+
+python src/agents/liquidation_agent.py
+python src/agents/chartanalysis_agent.py
+python src/agents/sentiment_agent.py
+python src/agents/funding_agent.py
+python src/agents/tiktok_agent.py
+
+
+
+Usage: PRUNE BACKTEST FILE.
+# Preview what will be deleted
+python src/scripts/prune_rbi_backtests.py
+
+# Actually delete (frees ~90% disk space)
+python src/scripts/prune_rbi_backtests.py --execute
+
+# Custom threshold (60 days instead of 30)
+python src/scripts/prune_rbi_backtests.py --execute --days 60
+
+
+# 1. Test risk engine
+cd risk_management
+python dynamic_risk_engine.py
+
+# 2. Run risk dashboard
+python risk_dashboard.py
+
+# 3. Test complete workflow (dry run)
+cd ../src/scripts
+python auto_backtest_to_live_workflow.py
+
+# Start 4-hour paper trading evaluation
+python src/scripts/auto_backtest_to_live_workflow.py --execute
+
+----------------------------------------------------------------
+# Dry run (preview)
+python src/scripts/auto_backtest_to_live_workflow.py
+
+# Execute (start 4-hour paper trading)
+python src/scripts/auto_backtest_to_live_workflow.py --execute
+
+# Custom: 8 hours, $25k equity, manual review
+python src/scripts/auto_backtest_to_live_workflow.py \
+    --execute --duration 8.0 --equity 25000 --no-auto-live
+--------------------------------------------------------------
+
+
+

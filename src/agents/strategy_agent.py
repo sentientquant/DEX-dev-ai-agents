@@ -5,7 +5,16 @@ Handles all strategy-based trading decisions
 
 from src.config import *
 import json
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 import anthropic
 import os
 import importlib

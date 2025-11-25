@@ -108,7 +108,16 @@ from typing import Dict, List
 from datetime import datetime, timedelta
 import time
 from pathlib import Path
-from termcolor import colored, cprint
+# Make termcolor optional
+try:
+    from termcolor import colored, cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 import anthropic
 from dotenv import load_dotenv
 import requests

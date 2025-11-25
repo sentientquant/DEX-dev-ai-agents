@@ -1,0 +1,202 @@
+{
+  "timestamp": "2025-11-21T05:12:57.109875",
+  "total_scanned": 5,
+  "strong_candidates": [
+    {
+      "symbol": "FETUSDT",
+      "base": "FET",
+      "volume_24h": 75600726.51549,
+      "price": 0.3084,
+      "market_cap": 789052368,
+      "tier": "MID_CAP",
+      "score": 60,
+      "signals": {
+        "rsi": 37.1,
+        "rsi_signal": "DOWNTREND",
+        "rvol": 1.75,
+        "price_change_24h": 5.78,
+        "volume_price_signal": "STRONG_BUY",
+        "price_change_2w": 36.76,
+        "momentum_signal": "STRONG",
+        "vs_btc": 50.45,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 1,
+        "persistence_signal": "SPIKE"
+      },
+      "price_change_24h": 5.78,
+      "classification": "STRONG"
+    },
+    {
+      "symbol": "STRKUSDT",
+      "base": "STRK",
+      "volume_24h": 177555741.138769,
+      "price": 0.2462,
+      "market_cap": 1144457847,
+      "tier": "LARGE_CAP",
+      "score": 60,
+      "signals": {
+        "rsi": 32.1,
+        "rsi_signal": "DOWNTREND",
+        "rvol": 2.48,
+        "price_change_24h": 0.24,
+        "volume_price_signal": "WEAK_NOISE",
+        "price_change_2w": 135.7,
+        "momentum_signal": "STRONG",
+        "vs_btc": 149.39,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 3,
+        "persistence_signal": "ESTABLISHED"
+      },
+      "price_change_24h": 0.24,
+      "classification": "STRONG"
+    }
+  ],
+  "moderate_candidates": [
+    {
+      "symbol": "ZECUSDT",
+      "base": "ZEC",
+      "volume_24h": 882622369.12249,
+      "price": 689.0,
+      "market_cap": 11303482877,
+      "tier": "LARGE_CAP",
+      "score": 55,
+      "signals": {
+        "rsi": 52.6,
+        "rsi_signal": "UPTREND",
+        "rvol": 1.0,
+        "price_change_24h": 11.13,
+        "volume_price_signal": "NO_SIGNAL",
+        "price_change_2w": 28.79,
+        "momentum_signal": "STRONG",
+        "vs_btc": 42.48,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 0,
+        "persistence_signal": "SPIKE"
+      },
+      "price_change_24h": 11.13,
+      "classification": "MODERATE"
+    }
+  ],
+  "all_results": [
+    {
+      "symbol": "FETUSDT",
+      "base": "FET",
+      "volume_24h": 75600726.51549,
+      "price": 0.3084,
+      "market_cap": 789052368,
+      "tier": "MID_CAP",
+      "score": 60,
+      "signals": {
+        "rsi": 37.1,
+        "rsi_signal": "DOWNTREND",
+        "rvol": 1.75,
+        "price_change_24h": 5.78,
+        "volume_price_signal": "STRONG_BUY",
+        "price_change_2w": 36.76,
+        "momentum_signal": "STRONG",
+        "vs_btc": 50.45,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 1,
+        "persistence_signal": "SPIKE"
+      },
+      "price_change_24h": 5.78,
+      "classification": "STRONG"
+    },
+    {
+      "symbol": "STRKUSDT",
+      "base": "STRK",
+      "volume_24h": 177555741.138769,
+      "price": 0.2462,
+      "market_cap": 1144457847,
+      "tier": "LARGE_CAP",
+      "score": 60,
+      "signals": {
+        "rsi": 32.1,
+        "rsi_signal": "DOWNTREND",
+        "rvol": 2.48,
+        "price_change_24h": 0.24,
+        "volume_price_signal": "WEAK_NOISE",
+        "price_change_2w": 135.7,
+        "momentum_signal": "STRONG",
+        "vs_btc": 149.39,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 3,
+        "persistence_signal": "ESTABLISHED"
+      },
+      "price_change_24h": 0.24,
+      "classification": "STRONG"
+    },
+    {
+      "symbol": "ZECUSDT",
+      "base": "ZEC",
+      "volume_24h": 882622369.12249,
+      "price": 689.0,
+      "market_cap": 11303482877,
+      "tier": "LARGE_CAP",
+      "score": 55,
+      "signals": {
+        "rsi": 52.6,
+        "rsi_signal": "UPTREND",
+        "rvol": 1.0,
+        "price_change_24h": 11.13,
+        "volume_price_signal": "NO_SIGNAL",
+        "price_change_2w": 28.79,
+        "momentum_signal": "STRONG",
+        "vs_btc": 42.48,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 0,
+        "persistence_signal": "SPIKE"
+      },
+      "price_change_24h": 11.13,
+      "classification": "MODERATE"
+    },
+    {
+      "symbol": "ATOMUSDT",
+      "base": "ATOM",
+      "volume_24h": 20510642.28376,
+      "price": 2.805,
+      "market_cap": 1333957888,
+      "tier": "LARGE_CAP",
+      "score": 40,
+      "signals": {
+        "rsi": 41.6,
+        "rsi_signal": "DOWNTREND",
+        "rvol": 2.66,
+        "price_change_24h": 6.22,
+        "volume_price_signal": "STRONG_BUY",
+        "price_change_2w": 6.5,
+        "momentum_signal": "WEAK",
+        "vs_btc": 20.19,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 1,
+        "persistence_signal": "SPIKE"
+      },
+      "price_change_24h": 6.22,
+      "classification": "WEAK"
+    },
+    {
+      "symbol": "USDEUSDT",
+      "base": "USDE",
+      "volume_24h": 87673820.2987,
+      "price": 0.9993,
+      "market_cap": 7599686354,
+      "tier": "LARGE_CAP",
+      "score": 40,
+      "signals": {
+        "rsi": 62.5,
+        "rsi_signal": "UPTREND",
+        "rvol": 0.87,
+        "price_change_24h": 0.01,
+        "volume_price_signal": "NO_SIGNAL",
+        "price_change_2w": 0.01,
+        "momentum_signal": "WEAK",
+        "vs_btc": 13.7,
+        "vs_btc_signal": "STRONG_OUTPERFORM",
+        "persistence_cycles": 0,
+        "persistence_signal": "SPIKE"
+      },
+      "price_change_24h": 0.01,
+      "classification": "WEAK"
+    }
+  ]
+}

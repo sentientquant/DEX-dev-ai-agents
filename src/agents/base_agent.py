@@ -8,7 +8,16 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 
 class BaseAgent:
     def __init__(self, agent_type, use_exchange_manager=False):

@@ -1,0 +1,61 @@
+# Pre-commit hooks to enforce architectural patterns
+# Install: pip install pre-commit
+# Setup: pre-commit install
+# Run: pre-commit run --all-files
+
+repos:
+  # Python code quality
+  - repo: https://github.com/psf/black
+    rev: 24.1.1
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.0.0
+    hooks:
+      - id: flake8
+        args: ['--max-line-length=120', '--ignore=E203,W503']
+
+  # Custom architectural enforcement
+  - repo: local
+    hooks:
+      # CRITICAL: Prevent shared.models imports (duplicate system deleted)
+      - id: no-shared-models-import
+        name: No imports from shared.models (use src.models)
+        entry: bash -c 'grep -r "from shared.models" --include="*.py" . && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # CRITICAL: Prevent ModelFactory() instantiation (use singleton)
+      - id: no-model-factory-instantiation
+        name: No ModelFactory() instantiation (use model_factory singleton)
+        entry: bash -c 'grep -r "ModelFactory()" --include="*.py" . | grep -v "# Pre-commit exception" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # CRITICAL: Prevent hardcoded thresholds
+      - id: no-hardcoded-thresholds
+        name: No hardcoded thresholds (use unified_config)
+        entry: bash -c 'grep -r "STRONG_THRESHOLD = [0-9]" --include="*.py" . | grep -v unified_config.py | grep -v "# Pre-commit exception" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # CRITICAL: Prevent direct sqlite3.connect() (use database_manager)
+      - id: no-direct-sqlite-connect
+        name: No direct sqlite3.connect() (use get_db_manager)
+        entry: bash -c 'grep -r "sqlite3.connect(" --include="*.py" . | grep -v database_manager.py | grep -v "# Pre-commit exception" && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      # Enforce ModelResponse return type
+      - id: enforce-model-response
+        name: generate_response must return ModelResponse
+        entry: bash -c 'grep -r "def generate_response" --include="*.py" . | xargs -I {} grep -L "ModelResponse" {} && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        always_run: true

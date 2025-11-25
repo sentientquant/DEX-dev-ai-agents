@@ -1,0 +1,13 @@
+NakedCall
+
+INDICATORS_REQUIRED:
+- None (no technical indicators mentioned)
+
+ENTRY_CONDITIONS:
+- None specified (strategy involves selling a call option without owning the underlying asset, typically based on bearish or neutral outlook, but no indicator thresholds or conditions provided)
+
+EXIT_CONDITIONS:
+- None specified (exit would depend on option expiration, buyback, or assignment risk, but no specific logic given)
+
+STRATEGY_DETAILS:
+This is an options trading strategy focused on selling (shorting) a call option without holding the underlying asset as a hedge, exposing the seller to unlimited potential losses if the asset price rises sharply. It profits from time decay (theta) and declining volatility if the option expires worthless. No technical indicators, entry thresholds, or exit rules are defined in the description, making it a high-risk, directional bet suitable for experienced traders with margin requirements. Risk management typically involves stop-losses on the option price or position sizing, but these are not outlined here. Backtesting would require simulating options pricing models like Black-Scholes, historical volatility, and implied volatility surfaces rather than standard price-based indicators.

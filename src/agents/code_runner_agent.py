@@ -23,7 +23,16 @@ Moves to position, executes code, and captures screenshot
 import pyautogui
 import time
 from pathlib import Path
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from datetime import datetime
 import Quartz
 import sys

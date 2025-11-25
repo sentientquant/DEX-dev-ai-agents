@@ -231,7 +231,16 @@ from typing import Dict, List, Optional, Union
 from datetime import datetime, timedelta
 import time
 from dotenv import load_dotenv
-from termcolor import colored, cprint
+# Make termcolor optional
+try:
+    from termcolor import colored, cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 import anthropic
 from pathlib import Path
 import openai

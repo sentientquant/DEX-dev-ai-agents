@@ -1,0 +1,20 @@
+{
+  "last_updated": "2025-11-11T14:11:58.131931",
+  "accounts": [
+    {
+      "name": "Account 1",
+      "used": 20,
+      "budget": 100
+    },
+    {
+      "name": "Account 2",
+      "used": 60,
+      "budget": 100
+    },
+    {
+      "name": "Account 3",
+      "used": 0,
+      "budget": 100
+    }
+  ]
+}

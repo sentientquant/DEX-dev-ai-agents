@@ -1,0 +1,13 @@
+STRATEGY_NAME: UncoveredPutWrite
+
+INDICATORS_REQUIRED:
+- None specified
+
+ENTRY_CONDITIONS:
+No specific entry conditions mentioned; typically involves selecting puts on assets expected to remain stable or rise, often based on fundamental analysis or volatility assessment rather than technical indicators.
+
+EXIT_CONDITIONS:
+No specific exit conditions mentioned; exits may occur via option expiration, buyback if the put moves against the seller, or assignment if the underlying falls below the strike.
+
+STRATEGY_DETAILS:
+The Naked Put strategy, also known as an Uncovered Put Write, is a bullish options trading approach where the seller writes (sells) put options on an underlying asset without holding the asset or a corresponding hedge. This generates premium income upfront, profiting if the underlying price stays above the put's strike price at expiration (allowing the option to expire worthless). Risks include potentially unlimited losses if the underlying price drops sharply, as the seller may be obligated to buy the asset at the strike price. No technical indicators are referenced in the description, implying reliance on discretionary factors like market outlook, implied volatility (to sell high-premium puts), or support levels. Position sizing is critical due to margin requirements and tail risk; it's often used in neutral-to-bullish outlooks on stocks, indices, or ETFs with theta decay benefits for the seller. Backtesting would require options data, focusing on premium collection rates, win probabilities, and drawdowns from assignment scenarios.

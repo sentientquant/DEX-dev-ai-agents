@@ -66,6 +66,10 @@ Thumbs.db
 *.log
 *.sqlite
 *.db
+logs/
+database/
+*.db-shm
+*.db-wal
 
 # Moon Dev Trading Specific
 dont_overtrade.txt
@@ -161,8 +165,23 @@ binance_trades.csv
 *.csv.gz
 *.parquet
 
+# OHLCV data files (can be large - regenerate as needed)
+src/data/ohlcv/*.csv
+**/ohlcv/*.csv
+# Keep only small sample files under 10MB
+!src/data/ohlcv/*-1h.csv
+
 # Ignore large video files (assistant)
 src/data/chat_agent/*.mov
 
 # Video Agent - Sora 2 generated videos
 src/data/video_agent/
+
+# Organized directories
+mypy_report/
+utility_scripts/*.pyc
+documentation/archived/
+
+# Temporary files
+nul
+*.tmp

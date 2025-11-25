@@ -1,0 +1,16 @@
+# Type Checking and Development Dependencies
+# Install with: pip install -r requirements_typecheck.txt
+
+# Type checking
+mypy>=1.8.0
+types-requests>=2.31.0
+pandas-stubs>=2.1.0
+types-termcolor>=1.1.0
+
+# Pre-commit hooks (optional but recommended)
+pre-commit>=3.6.0
+
+# Code quality (optional)
+# black>=23.12.1  # Auto-formatter
+# flake8>=7.0.0   # Linter
+# isort>=5.13.0   # Import sorter

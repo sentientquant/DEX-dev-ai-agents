@@ -1,0 +1,11 @@
+TOP STRATEGIES FOR DEPLOYMENT
+========================================================================================================================
+
+1. VolatilityBracket - SOL 1h
+   Return: 726.25% | Sharpe: 0.34 | MaxDD: -91.52% | Trades: 13
+   File: VolatilityBracket.csv
+
+2. VolatilityBracket - ETH 1h
+   Return: 236.56% | Sharpe: 0.23 | MaxDD: -72.42% | Trades: 31
+   File: VolatilityBracket.csv
+

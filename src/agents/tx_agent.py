@@ -11,7 +11,16 @@ import requests
 import pandas as pd
 import time
 import random
-from termcolor import colored
+# Make termcolor optional
+try:
+    from termcolor import colored
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 import logging
 from rich.console import Console
 from rich import print as rprint

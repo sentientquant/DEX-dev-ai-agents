@@ -1,10 +1,19 @@
 """
-🌙 Moon Dev's xAI Grok Model Implementation
+[MOON] Moon Dev's xAI Grok Model Implementation
 Built with love by Moon Dev 🚀
 """
 
 from openai import OpenAI
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from .base_model import BaseModel, ModelResponse
 
 class XAIModel(BaseModel):
@@ -18,7 +27,7 @@ class XAIModel(BaseModel):
             "rate_limits": "2M tpm, 480 rpm"
         },
         "grok-4-fast-reasoning": {
-            "description": "Grok 4 fast with reasoning capabilities",
+            "description": "Grok 4 fast with reasoning capabilities (direct xAI API only)",
             "context_window": "2M tokens",
             "pricing": "$0.20 - $0.50 per million tokens",
             "rate_limits": "4M tpm, 480 rpm"
@@ -61,20 +70,20 @@ class XAIModel(BaseModel):
                 api_key=self.api_key,
                 base_url=self.base_url
             )
-            cprint(f"✨ Moon Dev's magic initialized xAI Grok model: {self.model_name} 🌙", "green")
+            cprint(f"[XAI] Moon Dev's magic initialized xAI Grok model: {self.model_name}", "green")
 
             # Show model info if available
             model_info = self.AVAILABLE_MODELS.get(self.model_name, {})
             if model_info:
                 if "context_window" in model_info:
-                    cprint(f"📊 Context window: {model_info['context_window']}", "cyan")
+                    cprint(f"[INFO] Context window: {model_info['context_window']}", "cyan")
                 if "pricing" in model_info:
-                    cprint(f"💰 Pricing: {model_info['pricing']}", "cyan")
+                    cprint(f"[COST] Pricing: {model_info['pricing']}", "cyan")
                 if "rate_limits" in model_info:
-                    cprint(f"⚡ Rate limits: {model_info['rate_limits']}", "cyan")
+                    cprint(f"[RATE] Rate limits: {model_info['rate_limits']}", "cyan")
 
         except Exception as e:
-            cprint(f"❌ Failed to initialize xAI Grok model: {str(e)}", "red")
+            cprint(f"[ERROR] Failed to initialize xAI Grok model: {str(e)}", "red")
             self.client = None
 
     def generate_response(self,
@@ -86,7 +95,7 @@ class XAIModel(BaseModel):
     ) -> ModelResponse:
         """Generate a response using xAI Grok"""
         try:
-            cprint(f"🤔 Moon Dev's {self.model_name} is thinking...", "yellow")
+            cprint(f"[THINK] Moon Dev's {self.model_name} is thinking...", "yellow")
 
             response = self.client.chat.completions.create(
                 model=self.model_name,
@@ -101,7 +110,7 @@ class XAIModel(BaseModel):
 
             content = response.choices[0].message.content.strip()
 
-            cprint(f"✅ Grok response received! 🌙", "green")
+            cprint(f"[OK] Grok response received!", "green")
 
             return ModelResponse(
                 content=content,
@@ -111,7 +120,7 @@ class XAIModel(BaseModel):
             )
 
         except Exception as e:
-            cprint(f"❌ xAI Grok generation error: {str(e)}", "red")
+            cprint(f"[ERROR] xAI Grok generation error: {str(e)}", "red")
             raise
 
     def is_available(self) -> bool:

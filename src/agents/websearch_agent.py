@@ -37,7 +37,16 @@ import random
 import json
 from datetime import datetime
 from pathlib import Path
-from termcolor import cprint, colored
+# Make termcolor optional
+try:
+    from termcolor import cprint, colored
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 import pandas as pd
 import sys
 import shutil
@@ -49,8 +58,20 @@ import requests
 # Load environment variables
 load_dotenv()
 
+# Import shared idea writer utilities for RBI integration
+import sys
+project_root = str(Path(__file__).parent.parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+from src.agents import idea_writer_utils
+
 # 🌙 Moon Dev Configuration 🌙
 SLEEP_BETWEEN_SEARCHES = 60  # Seconds to wait between searches (default: 60)
+
+# 🌙 RBI Integration Settings 🌙
+WRITE_TO_RBI_IDEAS = True  # Enable/disable writing to ideas.txt for RBI Agent
+MIN_STRATEGY_LENGTH = 100  # Minimum characters for a valid strategy
+MAX_IDEAS_PER_SEARCH = 2  # Maximum ideas to extract per search cycle
 GLM_MODEL = "z-ai/glm-4.6"  # Zhipu AI GLM - Moon Dev's choice!
 # Alternative models:
 # GLM_MODEL = "meta-llama/llama-3.3-70b-instruct:free"  # Llama 3.3 70B (reliable English)
@@ -58,10 +79,11 @@ GLM_MODEL = "z-ai/glm-4.6"  # Zhipu AI GLM - Moon Dev's choice!
 
 # OpenAI Web Search Models (for Chat Completions API)
 # These are specialized models with built-in web search capabilities
-OPENAI_WEB_SEARCH_MODEL = "gpt-4o-mini-search-preview"  # Default: Fast & cheap
+OPENAI_WEB_SEARCH_MODEL = "gpt-4o-mini-search-preview"  # Fast & cheap with web search!
 # Alternative models to try:
-# OPENAI_WEB_SEARCH_MODEL = "gpt-4o-search-preview"  # More powerful
-# OPENAI_WEB_SEARCH_MODEL = "gpt-5-search-api"  # Most powerful (GPT-5)
+# OPENAI_WEB_SEARCH_MODEL = "gpt-4o-search-preview"  # More powerful with web search
+# OPENAI_WEB_SEARCH_MODEL = "gpt-5-search-api"  # Most powerful (GPT-5) with web search
+# OPENAI_WEB_SEARCH_MODEL = "gpt-4o-mini"  # Standard model (no built-in search)
 
 # Define paths
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -391,6 +413,69 @@ def fetch_webpage_content(url: str) -> Optional[Dict]:
         cprint(f"❌ Error parsing {url}: {str(e)}", "red")
         return None
 
+def extract_strategy_idea(strategy_data: Dict) -> Optional[str]:
+    """
+    Extract a concise 1-3 sentence trading strategy idea from strategy content
+
+    Args:
+        strategy_data: Dict with 'content', 'title', 'url'
+
+    Returns:
+        Concise strategy idea (1-3 sentences) or None if not extractable
+    """
+    try:
+        content = strategy_data.get('content', '')
+        title = strategy_data.get('title', '')
+
+        # Simple extraction: Use title + first meaningful sentence from content
+        # Clean title
+        title_clean = title.replace('\n', ' ').strip()
+
+        # Get first few sentences from content
+        sentences = []
+        for line in content.split('\n'):
+            line = line.strip()
+            # Skip headings, bullets, short lines
+            if (line and
+                not line.startswith('#') and
+                not line.startswith('-') and
+                not line.startswith('*') and
+                len(line) > 50):
+                sentences.append(line)
+                if len(sentences) >= 2:
+                    break
+
+        if not sentences:
+            return None
+
+        # Combine title (if meaningful) + first sentence(s)
+        if len(title_clean) > 20 and len(title_clean) < 200:
+            idea = f"{title_clean}. {sentences[0]}"
+        else:
+            idea = ' '.join(sentences[:2])
+
+        # Clean and truncate
+        idea = idea.replace('\n', ' ').strip()
+        idea = ' '.join(idea.split())  # Remove extra whitespace
+
+        # Truncate to reasonable length (RBI works best with 1-3 sentences)
+        if len(idea) > 500:
+            idea = idea[:497] + '...'
+
+        # Ensure it ends with period
+        if idea and not idea[-1] in '.!?':
+            idea += '.'
+
+        # Validate minimum length
+        if len(idea) < MIN_STRATEGY_LENGTH:
+            return None
+
+        return idea
+
+    except Exception as e:
+        cprint(f"⚠️ Error extracting strategy idea: {e}", "yellow")
+        return None
+
 def save_strategy_to_file(strategy_data: Dict, search_query: str) -> Optional[str]:
     """
     Save strategy content to a markdown file
@@ -449,6 +534,19 @@ def save_strategy_to_file(strategy_data: Dict, search_query: str) -> Optional[st
                 filename,
                 strategy_data['length']
             ])
+
+        # 🌙 RBI Integration: Extract concise idea and write to ideas.txt
+        if WRITE_TO_RBI_IDEAS and strategy_data['length'] >= MIN_STRATEGY_LENGTH:
+            idea_text = extract_strategy_idea(strategy_data)
+            if idea_text:
+                metadata = {
+                    'search_query': search_query,
+                    'source_url': strategy_data['url'],
+                    'title': strategy_data['title'][:100]  # Truncate long titles
+                }
+                success = idea_writer_utils.write_idea_to_file(idea_text, 'websearch_agent', metadata=metadata)
+                if success:
+                    cprint(f"📝 Added to RBI ideas.txt!", "white", "on_magenta")
 
         return filename
 
@@ -1277,4 +1375,12 @@ def main():
         run_continuous_search()
 
 if __name__ == "__main__":
+    # Set UTF-8 encoding for Windows terminal
+    import os
+    if os.name == 'nt':
+        import io
+        import sys
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
     main()

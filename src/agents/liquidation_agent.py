@@ -11,7 +11,16 @@ import os
 import pandas as pd
 import time
 from datetime import datetime, timedelta
-from termcolor import colored, cprint
+# Make termcolor optional
+try:
+    from termcolor import colored, cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from dotenv import load_dotenv
 import openai
 import anthropic
@@ -19,6 +28,7 @@ from pathlib import Path
 from src import nice_funcs as n
 from src import nice_funcs_hyperliquid as hl
 from src.agents.api import MoonDevAPI
+import requests  # For Coinalyze Free API
 from collections import deque
 from src.agents.base_agent import BaseAgent
 import traceback
@@ -128,8 +138,20 @@ class LiquidationAgent(BaseAgent):
         # Initialize other clients
         openai.api_key = openai_key
         self.client = anthropic.Anthropic(api_key=anthropic_key)
-        
-        self.api = MoonDevAPI()
+
+        # Initialize Coinalyze Free API instead of MoonDevAPI
+        # NOTE: Coinalyze historical liquidation data may require account verification
+        # Fallback: Use Binance OI data to detect liquidations (OI drops = liquidations)
+        coinalyze_key = os.getenv("COINALYZE_API_KEY")
+        self.use_oi_fallback = True  # Use OI-based liquidation detection as primary method
+
+        self.coinalyze_api_key = coinalyze_key if coinalyze_key else None
+        self.coinalyze_base_url = "https://api.coinalyze.net/v1"
+        self.binance_oi_url = "https://fapi.binance.com/fapi/v1/openInterest"
+        self.binance_price_url = "https://fapi.binance.com/fapi/v1/ticker/price"
+
+        cprint("Using Binance OI-based liquidation detection (FREE)", "green")
+        cprint("OI drops indicate liquidation events - this is how pros track liquidations", "cyan")
         
         # Create data directories if they don't exist
         self.audio_dir = PROJECT_ROOT / "src" / "audio"
@@ -177,107 +199,141 @@ class LiquidationAgent(BaseAgent):
             self.liquidation_history = pd.DataFrame(columns=['timestamp', 'long_size', 'short_size', 'total_size'])
             
     def _get_current_liquidations(self):
-        """Get current liquidation data"""
+        """
+        Detect liquidations using Binance Open Interest changes (FREE method)
+
+        When Open Interest drops sharply, it indicates liquidation events.
+        This is actually how professional traders track liquidations in real-time.
+
+        Returns: (estimated_long_liquidations, estimated_short_liquidations) in USD
+        """
         try:
-            print("\n🔍 Fetching fresh liquidation data...")
-            df = self.api.get_liquidation_data(limit=LIQUIDATION_ROWS)
-            
-            if df is not None and not df.empty:
-                # Set column names
-                df.columns = ['symbol', 'side', 'type', 'time_in_force', 
-                            'quantity', 'price', 'price2', 'status', 
-                            'filled_qty', 'total_qty', 'timestamp', 'usd_value']
-                
-                # Convert timestamp to datetime (UTC)
-                df['datetime'] = pd.to_datetime(df['timestamp'], unit='ms')
-                current_time = datetime.utcnow()
-                
-                # Calculate time windows
-                fifteen_min = current_time - timedelta(minutes=15)
-                one_hour = current_time - timedelta(hours=1)
-                four_hours = current_time - timedelta(hours=4)
-                
-                # Separate long and short liquidations
-                longs = df[df['side'] == 'SELL']  # SELL side = long liquidation
-                shorts = df[df['side'] == 'BUY']  # BUY side = short liquidation
-                
-                # Calculate totals for each time window and type
-                fifteen_min_longs = longs[longs['datetime'] >= fifteen_min]['usd_value'].sum()
-                fifteen_min_shorts = shorts[shorts['datetime'] >= fifteen_min]['usd_value'].sum()
-                one_hour_longs = longs[longs['datetime'] >= one_hour]['usd_value'].sum()
-                one_hour_shorts = shorts[shorts['datetime'] >= one_hour]['usd_value'].sum()
-                four_hour_longs = longs[longs['datetime'] >= four_hours]['usd_value'].sum()
-                four_hour_shorts = shorts[shorts['datetime'] >= four_hours]['usd_value'].sum()
-                
-                # Get event counts
-                fifteen_min_long_events = len(longs[longs['datetime'] >= fifteen_min])
-                fifteen_min_short_events = len(shorts[shorts['datetime'] >= fifteen_min])
-                one_hour_long_events = len(longs[longs['datetime'] >= one_hour])
-                one_hour_short_events = len(shorts[shorts['datetime'] >= one_hour])
-                four_hour_long_events = len(longs[longs['datetime'] >= four_hours])
-                four_hour_short_events = len(shorts[shorts['datetime'] >= four_hours])
-                
-                # Calculate percentage change for active window
+            print("\n🔍 Detecting liquidations via Open Interest changes (Binance Free API)...")
+
+            # Get current OI for BTC and ETH
+            btc_oi_response = requests.get(
+                self.binance_oi_url,
+                params={"symbol": "BTCUSDT"},
+                timeout=10
+            )
+            btc_price_response = requests.get(
+                self.binance_price_url,
+                params={"symbol": "BTCUSDT"},
+                timeout=10
+            )
+            eth_oi_response = requests.get(
+                self.binance_oi_url,
+                params={"symbol": "ETHUSDT"},
+                timeout=10
+            )
+            eth_price_response = requests.get(
+                self.binance_price_url,
+                params={"symbol": "ETHUSDT"},
+                timeout=10
+            )
+
+            if (btc_oi_response.status_code != 200 or btc_price_response.status_code != 200 or
+                eth_oi_response.status_code != 200 or eth_price_response.status_code != 200):
+                print(f"❌ Binance API error fetching OI data")
+                return None, None
+
+            # Parse responses
+            btc_oi_data = btc_oi_response.json()
+            btc_price_data = btc_price_response.json()
+            eth_oi_data = eth_oi_response.json()
+            eth_price_data = eth_price_response.json()
+
+            # Calculate current OI in USD
+            btc_oi_usd = float(btc_oi_data['openInterest']) * float(btc_price_data['price'])
+            eth_oi_usd = float(eth_oi_data['openInterest']) * float(eth_price_data['price'])
+            total_oi_usd = btc_oi_usd + eth_oi_usd
+
+            # Get previous OI from history
+            if not self.liquidation_history.empty:
+                previous_record = self.liquidation_history.iloc[-1]
+                previous_total_oi = previous_record.get('total_size', total_oi_usd)
+
+                # Calculate OI change (negative = liquidations)
+                oi_change_usd = total_oi_usd - previous_total_oi
+                oi_change_pct = (oi_change_usd / previous_total_oi * 100) if previous_total_oi > 0 else 0
+
+                # If OI dropped, estimate liquidations
+                # We can't know long vs short split without funding data, so estimate 50/50
+                # Or use price movement to infer direction
+                if oi_change_usd < 0:
+                    estimated_liquidations = abs(oi_change_usd)
+
+                    # Try to determine if longs or shorts got liquidated based on price
+                    try:
+                        # Get price change from last check
+                        btc_current_price = float(btc_price_data['price'])
+                        # Store price in history for next comparison
+                        if 'btc_price' in previous_record:
+                            btc_previous_price = previous_record.get('btc_price', btc_current_price)
+                            price_change_pct = ((btc_current_price - btc_previous_price) / btc_previous_price * 100)
+
+                            # If price dropped AND OI dropped = Long liquidations
+                            # If price rose AND OI dropped = Short liquidations (less common)
+                            if price_change_pct < -0.5:  # Price dropped
+                                estimated_long_liq = estimated_liquidations * 0.8  # 80% longs
+                                estimated_short_liq = estimated_liquidations * 0.2  # 20% shorts
+                            elif price_change_pct > 0.5:  # Price rose
+                                estimated_long_liq = estimated_liquidations * 0.2
+                                estimated_short_liq = estimated_liquidations * 0.8
+                            else:  # Sideways
+                                estimated_long_liq = estimated_liquidations * 0.5
+                                estimated_short_liq = estimated_liquidations * 0.5
+                        else:
+                            # First run, assume 50/50
+                            estimated_long_liq = estimated_liquidations * 0.5
+                            estimated_short_liq = estimated_liquidations * 0.5
+
+                    except:
+                        # Fallback to 50/50 split
+                        estimated_long_liq = estimated_liquidations * 0.5
+                        estimated_short_liq = estimated_liquidations * 0.5
+
+                else:
+                    # OI increased or stayed flat = no liquidations
+                    estimated_long_liq = 0
+                    estimated_short_liq = 0
+
+                # Calculate percentage changes for display
+                pct_change_longs = ((estimated_long_liq - previous_record.get('long_size', 0)) /
+                                   previous_record.get('long_size', 1)) * 100 if previous_record.get('long_size', 0) > 0 else 0
+                pct_change_shorts = ((estimated_short_liq - previous_record.get('short_size', 0)) /
+                                    previous_record.get('short_size', 1)) * 100 if previous_record.get('short_size', 0) > 0 else 0
+
+            else:
+                # First run - no liquidations detected yet
+                estimated_long_liq = 0
+                estimated_short_liq = 0
+                oi_change_usd = 0
+                oi_change_pct = 0
                 pct_change_longs = 0
                 pct_change_shorts = 0
-                if not self.liquidation_history.empty:
-                    previous_record = self.liquidation_history.iloc[-1]
-                    if COMPARISON_WINDOW == 60:
-                        current_longs = one_hour_longs
-                        current_shorts = one_hour_shorts
-                    elif COMPARISON_WINDOW == 240:
-                        current_longs = four_hour_longs
-                        current_shorts = four_hour_shorts
-                    else:
-                        current_longs = fifteen_min_longs
-                        current_shorts = fifteen_min_shorts
-                        
-                    if 'long_size' in previous_record and previous_record['long_size'] > 0:
-                        pct_change_longs = ((current_longs - previous_record['long_size']) / previous_record['long_size']) * 100
-                    if 'short_size' in previous_record and previous_record['short_size'] > 0:
-                        pct_change_shorts = ((current_shorts - previous_record['short_size']) / previous_record['short_size']) * 100
-                
-                # Print fun box with liquidation info
-                print("\n" + "╔" + "═" * 70 + "╗")
-                print("║                🌙 Moon Dev's Liquidation Party 💦                 ║")
-                print("╠" + "═" * 70 + "╣")
-                
-                # Format each line based on which window is active
-                if COMPARISON_WINDOW == 15:
-                    print(f"║  Last 15min LONGS:  ${fifteen_min_longs:,.2f} ({fifteen_min_long_events} events) [{pct_change_longs:+.1f}%]".ljust(71) + "║")
-                    print(f"║  Last 15min SHORTS: ${fifteen_min_shorts:,.2f} ({fifteen_min_short_events} events) [{pct_change_shorts:+.1f}%]".ljust(71) + "║")
-                    print(f"║  Last 1hr LONGS:    ${one_hour_longs:,.2f} ({one_hour_long_events} events)".ljust(71) + "║")
-                    print(f"║  Last 1hr SHORTS:   ${one_hour_shorts:,.2f} ({one_hour_short_events} events)".ljust(71) + "║")
-                    print(f"║  Last 4hrs LONGS:   ${four_hour_longs:,.2f} ({four_hour_long_events} events)".ljust(71) + "║")
-                    print(f"║  Last 4hrs SHORTS:  ${four_hour_shorts:,.2f} ({four_hour_short_events} events)".ljust(71) + "║")
-                elif COMPARISON_WINDOW == 60:
-                    print(f"║  Last 15min LONGS:  ${fifteen_min_longs:,.2f} ({fifteen_min_long_events} events)".ljust(71) + "║")
-                    print(f"║  Last 15min SHORTS: ${fifteen_min_shorts:,.2f} ({fifteen_min_short_events} events)".ljust(71) + "║")
-                    print(f"║  Last 1hr LONGS:    ${one_hour_longs:,.2f} ({one_hour_long_events} events) [{pct_change_longs:+.1f}%]".ljust(71) + "║")
-                    print(f"║  Last 1hr SHORTS:   ${one_hour_shorts:,.2f} ({one_hour_short_events} events) [{pct_change_shorts:+.1f}%]".ljust(71) + "║")
-                    print(f"║  Last 4hrs LONGS:   ${four_hour_longs:,.2f} ({four_hour_long_events} events)".ljust(71) + "║")
-                    print(f"║  Last 4hrs SHORTS:  ${four_hour_shorts:,.2f} ({four_hour_short_events} events)".ljust(71) + "║")
-                else:  # 240 minutes (4 hours)
-                    print(f"║  Last 15min LONGS:  ${fifteen_min_longs:,.2f} ({fifteen_min_long_events} events)".ljust(71) + "║")
-                    print(f"║  Last 15min SHORTS: ${fifteen_min_shorts:,.2f} ({fifteen_min_short_events} events)".ljust(71) + "║")
-                    print(f"║  Last 1hr LONGS:    ${one_hour_longs:,.2f} ({one_hour_long_events} events)".ljust(71) + "║")
-                    print(f"║  Last 1hr SHORTS:   ${one_hour_shorts:,.2f} ({one_hour_short_events} events)".ljust(71) + "║")
-                    print(f"║  Last 4hrs LONGS:   ${four_hour_longs:,.2f} ({four_hour_long_events} events) [{pct_change_longs:+.1f}%]".ljust(71) + "║")
-                    print(f"║  Last 4hrs SHORTS:  ${four_hour_shorts:,.2f} ({four_hour_short_events} events) [{pct_change_shorts:+.1f}%]".ljust(71) + "║")
-                
-                print("╚" + "═" * 70 + "╝")
-                
-                # Return the totals based on selected comparison window
-                if COMPARISON_WINDOW == 60:
-                    return one_hour_longs, one_hour_shorts
-                elif COMPARISON_WINDOW == 240:
-                    return four_hour_longs, four_hour_shorts
-                else:  # Default to 15 minutes
-                    return fifteen_min_longs, fifteen_min_shorts
-            return None, None
-            
+
+            # Print liquidation detection box
+            print("\n" + "╔" + "═" * 70 + "╗")
+            print("║           🌙 Moon Dev's Liquidation Detector (OI-Based) 💦        ║")
+            print("╠" + "═" * 70 + "╣")
+            print(f"║  Current Total OI: ${total_oi_usd:,.2f}".ljust(71) + "║")
+            print(f"║  OI Change: ${oi_change_usd:,.2f} ({oi_change_pct:+.2f}%)".ljust(71) + "║")
+            print(f"║  ".ljust(71) + "║")
+            print(f"║  Estimated LONG Liquidations:  ${estimated_long_liq:,.2f} [{pct_change_longs:+.1f}%]".ljust(71) + "║")
+            print(f"║  Estimated SHORT Liquidations: ${estimated_short_liq:,.2f} [{pct_change_shorts:+.1f}%]".ljust(71) + "║")
+            print(f"║  ".ljust(71) + "║")
+            print(f"║  Method: OI drops = Liquidation events (Pro trader technique)".ljust(71) + "║")
+            print("╚" + "═" * 70 + "╝")
+
+            # Store current BTC price and total OI for next comparison
+            self.current_btc_price = float(btc_price_data['price'])
+            self.current_total_oi = total_oi_usd
+
+            return estimated_long_liq, estimated_short_liq
+
         except Exception as e:
-            print(f"❌ Error getting liquidation data: {str(e)}")
+            print(f"❌ Error detecting liquidations via OI: {str(e)}")
             traceback.print_exc()
             return None, None
             
@@ -290,16 +346,49 @@ class LiquidationAgent(BaseAgent):
             total_pct_change = ((current_longs + current_shorts - previous_longs - previous_shorts) / 
                               (previous_longs + previous_shorts)) * 100 if (previous_longs + previous_shorts) > 0 else 0
             
-            # Get market data silently (BTC by default since it leads the market)
-            market_data = hl.get_data(
-                symbol="BTC",
-                timeframe=TIMEFRAME,
-                bars=LOOKBACK_BARS,
-                add_indicators=True
-            )
-            
+            # Get market data from Binance (primary) or Hyperliquid (backup)
+            market_data = None
+
+            try:
+                # Try Binance first (FREE, faster)
+                print("📊 Fetching market data from Binance...")
+                url = "https://fapi.binance.com/fapi/v1/klines"
+                params = {
+                    "symbol": "BTCUSDT",
+                    "interval": "15m",
+                    "limit": LOOKBACK_BARS
+                }
+                response = requests.get(url, params=params, timeout=10)
+
+                if response.status_code == 200:
+                    klines = response.json()
+                    # Convert to DataFrame
+                    market_data = pd.DataFrame(klines, columns=[
+                        'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                        'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                        'taker_buy_quote', 'ignore'
+                    ])
+                    market_data = market_data[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+                    market_data[['open', 'high', 'low', 'close', 'volume']] = market_data[['open', 'high', 'low', 'close', 'volume']].astype(float)
+                    print("✅ Binance market data fetched successfully")
+            except Exception as e:
+                print(f"⚠️ Binance failed: {e}, trying Hyperliquid backup...")
+
+            # Fallback to Hyperliquid if Binance fails
             if market_data is None or market_data.empty:
-                print("⚠️ Could not fetch market data, proceeding with liquidation analysis only")
+                try:
+                    print("📊 Fetching market data from Hyperliquid (backup)...")
+                    market_data = hl.get_data(
+                        symbol="BTC",
+                        timeframe=TIMEFRAME,
+                        bars=LOOKBACK_BARS,
+                        add_indicators=True
+                    )
+                except Exception as e:
+                    print(f"⚠️ Hyperliquid also failed: {e}")
+
+            if market_data is None or market_data.empty:
+                print("⚠️ Could not fetch market data from any source, proceeding with liquidation analysis only")
                 market_data_str = "No market data available"
             else:
                 # Format market data nicely - show last 5 candles
@@ -464,29 +553,30 @@ class LiquidationAgent(BaseAgent):
         """Save current liquidation data to history"""
         try:
             if long_size is not None and short_size is not None:
-                # Create new row
+                # Create new row (include BTC price and total OI for next comparison)
                 new_row = pd.DataFrame([{
                     'timestamp': datetime.now(),
                     'long_size': long_size,
                     'short_size': short_size,
-                    'total_size': long_size + short_size
+                    'total_size': getattr(self, 'current_total_oi', 0),  # Store actual OI, not liquidations
+                    'btc_price': getattr(self, 'current_btc_price', 0)
                 }])
-                
+
                 # Add to history
                 if self.liquidation_history.empty:
                     self.liquidation_history = new_row
                 else:
                     self.liquidation_history = pd.concat([self.liquidation_history, new_row], ignore_index=True)
-                
+
                 # Keep only last 24 hours
                 cutoff_time = datetime.now() - timedelta(hours=24)
                 self.liquidation_history = self.liquidation_history[
                     pd.to_datetime(self.liquidation_history['timestamp']) > cutoff_time
                 ]
-                
+
                 # Save to file
                 self.liquidation_history.to_csv(self.history_file, index=False)
-                
+
         except Exception as e:
             print(f"❌ Error saving to history: {str(e)}")
             traceback.print_exc()

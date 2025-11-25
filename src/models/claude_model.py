@@ -4,7 +4,16 @@ Built with love by Moon Dev 🚀
 """
 
 from anthropic import Anthropic
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from .base_model import BaseModel, ModelResponse
 
 class ClaudeModel(BaseModel):
@@ -32,9 +41,9 @@ class ClaudeModel(BaseModel):
         """Initialize the Anthropic client"""
         try:
             self.client = Anthropic(api_key=self.api_key)
-            cprint(f"✨ Initialized Claude model: {self.model_name}", "green")
+            cprint(f"[OK] Initialized Claude model: {self.model_name}", "green")
         except Exception as e:
-            cprint(f"❌ Failed to initialize Claude model: {str(e)}", "red")
+            cprint(f"[X] Failed to initialize Claude model: {str(e)}", "red")
             self.client = None
     
     def generate_response(self, 
@@ -64,7 +73,7 @@ class ClaudeModel(BaseModel):
             )
             
         except Exception as e:
-            cprint(f"❌ Claude generation error: {str(e)}", "red")
+            cprint(f"[X] Claude generation error: {str(e)}", "red")
             raise
     
     def is_available(self) -> bool:

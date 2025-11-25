@@ -28,7 +28,16 @@ from google.cloud import speech_v1p1beta1 as speech
 import pyaudio
 import openai
 from anthropic import Anthropic
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from dotenv import load_dotenv
 from random import randint, uniform
 import threading

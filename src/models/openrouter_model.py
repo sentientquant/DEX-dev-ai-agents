@@ -1,12 +1,21 @@
 """
-🌙 Moon Dev's OpenRouter Model Implementation
-Built with love by Moon Dev 🚀
+[MOON] Moon Dev's OpenRouter Model Implementation
+Built with love by Moon Dev
 
 OpenRouter provides unified access to all major AI models through a single API.
 """
 
 from openai import OpenAI
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from .base_model import BaseModel, ModelResponse
 import time
 
@@ -91,7 +100,7 @@ class OpenRouterModel(BaseModel):
             "output_price": "See openrouter.ai/docs"
         },
 
-        # 🌙 Moon Dev: ADD MORE MODELS HERE!
+        # [MOON] Moon Dev: ADD MORE MODELS HERE!
         # Copy the format above and paste model info from https://openrouter.ai/docs
         # Example:
         # "provider/model-name": {
@@ -103,104 +112,104 @@ class OpenRouterModel(BaseModel):
 
     def __init__(self, api_key: str, model_name: str = "google/gemini-2.5-flash", **kwargs):
         try:
-            cprint(f"\n🌙 Moon Dev's OpenRouter Model Initialization", "cyan")
+            cprint(f"\n[OPENROUTER] Moon Dev's OpenRouter Model Initialization", "cyan")
 
             # Validate API key
             if not api_key or len(api_key.strip()) == 0:
                 raise ValueError("API key is empty or None")
 
-            cprint(f"🔑 API Key validation:", "cyan")
-            cprint(f"  ├─ Length: {len(api_key)} chars", "cyan")
-            cprint(f"  ├─ Contains whitespace: {'yes' if any(c.isspace() for c in api_key) else 'no'}", "cyan")
-            cprint(f"  └─ Starts with 'sk-or-': {'yes' if api_key.startswith('sk-or-') else 'no'}", "cyan")
+            cprint(f"[KEY] API Key validation:", "cyan")
+            cprint(f"  - Length: {len(api_key)} chars", "cyan")
+            cprint(f"  - Contains whitespace: {'yes' if any(c.isspace() for c in api_key) else 'no'}", "cyan")
+            cprint(f"  - Starts with 'sk-or-': {'yes' if api_key.startswith('sk-or-') else 'no'}", "cyan")
 
             # Validate model name
-            cprint(f"\n📝 Model validation:", "cyan")
-            cprint(f"  ├─ Requested: {model_name}", "cyan")
+            cprint(f"\n[MODEL] Model validation:", "cyan")
+            cprint(f"  - Requested: {model_name}", "cyan")
             if model_name not in self.AVAILABLE_MODELS:
-                cprint(f"  └─ ⚠️ Model not in predefined list (will still try to use it)", "yellow")
-                cprint(f"  💡 OpenRouter supports 200+ models - see https://openrouter.ai/docs", "cyan")
+                cprint(f"  - [WARN] Model not in predefined list (will still try to use it)", "yellow")
+                cprint(f"  - [INFO] OpenRouter supports 200+ models - see https://openrouter.ai/docs", "cyan")
             else:
-                cprint(f"  └─ ✅ Model name recognized", "green")
+                cprint(f"  - [OK] Model name recognized", "green")
 
             self.model_name = model_name
 
             # Call parent class initialization
-            cprint(f"\n📡 Parent class initialization...", "cyan")
+            cprint(f"\n[INIT] Parent class initialization...", "cyan")
             super().__init__(api_key, **kwargs)
-            cprint(f"✅ Parent class initialized", "green")
+            cprint(f"[OK] Parent class initialized", "green")
 
         except Exception as e:
-            cprint(f"\n❌ Error in OpenRouter model initialization", "red")
-            cprint(f"  ├─ Error type: {type(e).__name__}", "red")
-            cprint(f"  ├─ Error message: {str(e)}", "red")
+            cprint(f"\n[ERROR] Error in OpenRouter model initialization", "red")
+            cprint(f"  - Error type: {type(e).__name__}", "red")
+            cprint(f"  - Error message: {str(e)}", "red")
             if "api_key" in str(e).lower():
-                cprint(f"  ├─ 🔑 This appears to be an API key issue", "red")
-                cprint(f"  └─ Please check your OPENROUTER_API_KEY in .env", "red")
+                cprint(f"  - [KEY] This appears to be an API key issue", "red")
+                cprint(f"  - Please check your OPENROUTER_API_KEY in .env", "red")
             elif "model" in str(e).lower():
-                cprint(f"  ├─ 🤖 This appears to be a model name issue", "red")
-                cprint(f"  └─ See all models at: https://openrouter.ai/docs", "red")
+                cprint(f"  - [MODEL] This appears to be a model name issue", "red")
+                cprint(f"  - See all models at: https://openrouter.ai/docs", "red")
             raise
 
     def initialize_client(self, **kwargs) -> None:
         """Initialize the OpenRouter client (uses OpenAI SDK)"""
         try:
-            cprint(f"\n🔌 Initializing OpenRouter client...", "cyan")
-            cprint(f"  ├─ API Key length: {len(self.api_key)} chars", "cyan")
-            cprint(f"  ├─ Model name: {self.model_name}", "cyan")
+            cprint(f"\n[INIT] Initializing OpenRouter client...", "cyan")
+            cprint(f"  - API Key length: {len(self.api_key)} chars", "cyan")
+            cprint(f"  - Model name: {self.model_name}", "cyan")
 
-            cprint(f"\n  ├─ Creating OpenRouter client (via OpenAI SDK)...", "cyan")
+            cprint(f"\n  - Creating OpenRouter client (via OpenAI SDK)...", "cyan")
             # OpenRouter uses OpenAI-compatible API
             self.client = OpenAI(
                 api_key=self.api_key,
                 base_url="https://openrouter.ai/api/v1"
             )
-            cprint(f"  ├─ ✅ OpenRouter client created", "green")
+            cprint(f"  - [OK] OpenRouter client created", "green")
 
-            # Test the connection with a simple completion
-            cprint(f"  ├─ Testing connection with model: {self.model_name}", "cyan")
-            test_response = self.client.chat.completions.create(
+            # Test the connection with a simple completion (WITH TIMEOUT)
+            cprint(f"  - Testing connection with model: {self.model_name}", "cyan")
+            test_response = self.client.with_options(timeout=5.0).chat.completions.create(
                 model=self.model_name,
                 messages=[
                     {"role": "user", "content": "Hello"}
                 ],
-                max_tokens=10
+                max_tokens=50  # Changed from 10 to 50 (minimum is 16 for some models)
             )
-            cprint(f"  ├─ ✅ Test response received", "green")
-            cprint(f"  ├─ Response content: {test_response.choices[0].message.content}", "cyan")
+            cprint(f"  - [OK] Test response received", "green")
+            cprint(f"  - Response content: {test_response.choices[0].message.content}", "cyan")
 
             model_info = self.AVAILABLE_MODELS.get(self.model_name, {
                 "description": "Custom model via OpenRouter",
                 "input_price": "See openrouter.ai/docs",
                 "output_price": "See openrouter.ai/docs"
             })
-            cprint(f"  ├─ ✨ OpenRouter model initialized: {self.model_name}", "green")
-            cprint(f"  ├─ Model info: {model_info.get('description', '')}", "cyan")
-            cprint(f"  └─ Pricing: Input {model_info.get('input_price', '')} | Output {model_info.get('output_price', '')}", "yellow")
+            cprint(f"  - [INIT] OpenRouter model initialized: {self.model_name}", "green")
+            cprint(f"  - Model info: {model_info.get('description', '')}", "cyan")
+            cprint(f"  - Pricing: Input {model_info.get('input_price', '')} | Output {model_info.get('output_price', '')}", "yellow")
 
         except Exception as e:
-            cprint(f"\n❌ Failed to initialize OpenRouter client", "red")
-            cprint(f"  ├─ Error type: {type(e).__name__}", "red")
-            cprint(f"  ├─ Error message: {str(e)}", "red")
+            cprint(f"\n[ERROR] Failed to initialize OpenRouter client", "red")
+            cprint(f"  - Error type: {type(e).__name__}", "red")
+            cprint(f"  - Error message: {str(e)}", "red")
 
             # Check for specific error types
             if "api_key" in str(e).lower() or "401" in str(e):
-                cprint(f"  ├─ 🔑 This appears to be an API key issue", "red")
-                cprint(f"  ├─ Make sure your OPENROUTER_API_KEY is correct", "red")
-                cprint(f"  ├─ Get your key at: https://openrouter.ai/keys", "red")
-                cprint(f"  └─ Key length: {len(self.api_key)} chars", "red")
+                cprint(f"  - [KEY] This appears to be an API key issue", "red")
+                cprint(f"  - Make sure your OPENROUTER_API_KEY is correct", "red")
+                cprint(f"  - Get your key at: https://openrouter.ai/keys", "red")
+                cprint(f"  - Key length: {len(self.api_key)} chars", "red")
             elif "model" in str(e).lower():
-                cprint(f"  ├─ 🤖 This appears to be a model name issue", "red")
-                cprint(f"  ├─ Requested model: {self.model_name}", "red")
-                cprint(f"  └─ See all models at: https://openrouter.ai/docs", "red")
+                cprint(f"  - [MODEL] This appears to be a model name issue", "red")
+                cprint(f"  - Requested model: {self.model_name}", "red")
+                cprint(f"  - See all models at: https://openrouter.ai/docs", "red")
 
             if hasattr(e, 'response'):
-                cprint(f"  ├─ Response status: {e.response.status_code}", "red")
-                cprint(f"  └─ Response body: {e.response.text}", "red")
+                cprint(f"  - Response status: {e.response.status_code}", "red")
+                cprint(f"  - Response body: {e.response.text}", "red")
 
             if hasattr(e, '__traceback__'):
                 import traceback
-                cprint(f"\n📋 Full traceback:", "red")
+                cprint(f"\n[TRACE] Full traceback:", "red")
                 cprint(traceback.format_exc(), "red")
 
             self.client = None
@@ -252,16 +261,16 @@ class OpenRouterModel(BaseModel):
 
             # Handle rate limit errors (429)
             if "429" in error_str or "rate_limit" in error_str:
-                cprint(f"⚠️  OpenRouter rate limit exceeded", "yellow")
+                cprint(f"[WARN] OpenRouter rate limit exceeded", "yellow")
                 cprint(f"   Model: {self.model_name}", "yellow")
-                cprint(f"   💡 Skipping this model for this request...", "cyan")
+                cprint(f"   [INFO] Skipping this model for this request...", "cyan")
                 return None
 
             # Handle quota errors (402)
             if "402" in error_str or "insufficient" in error_str:
-                cprint(f"⚠️  OpenRouter credits insufficient", "yellow")
+                cprint(f"[WARN] OpenRouter credits insufficient", "yellow")
                 cprint(f"   Model: {self.model_name}", "yellow")
-                cprint(f"   💡 Add credits at: https://openrouter.ai/credits", "cyan")
+                cprint(f"   [INFO] Add credits at: https://openrouter.ai/credits", "cyan")
                 return None
 
             # Raise 503 errors (service unavailable)
@@ -269,7 +278,7 @@ class OpenRouterModel(BaseModel):
                 raise e
 
             # Log other errors
-            cprint(f"❌ OpenRouter error: {error_str}", "red")
+            cprint(f"[ERROR] OpenRouter error: {error_str}", "red")
             return None
 
     def is_available(self) -> bool:

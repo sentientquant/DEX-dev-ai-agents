@@ -8,7 +8,16 @@ Created with ❤️ by Moon Dev
 
 import time
 import random
-from termcolor import cprint, colored
+# Make termcolor optional
+try:
+    from termcolor import cprint, colored
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 
 def demo_countdown(seconds=15):
     """Demonstrate the colorful countdown animation"""

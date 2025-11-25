@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 🌙 Moon Dev's RBI AI v3.0 PARALLEL PROCESSOR + MULTI-DATA TESTING 🚀
 Built with love by Moon Dev 🚀
@@ -9,13 +10,13 @@ each tested on 25+ different data sources!
 - Thread-safe colored output
 - Rate limiting to avoid API throttling
 - Massively faster than sequential processing
-- 🆕 AUTOMATIC MULTI-DATA TESTING on 25+ data sources (BTC, ETH, SOL, AAPL, TSLA, ES, NQ, etc.)
+- 🆕 AUTOMATIC MULTI-DATA TESTING on crypto data sources (BTC, ETH, SOL - multiple timeframes)
 
 HOW IT WORKS:
 1. Reads trading ideas from ideas.txt
 2. Spawns up to MAX_PARALLEL_THREADS workers
 3. Each thread independently: Research → Backtest → Debug → Optimize
-4. 🆕 Each successful backtest automatically tests on 25+ data sources!
+4. 🆕 Each successful backtest automatically tests on multiple crypto data sources (BTC, ETH, SOL)!
 5. All threads run simultaneously until target returns are hit
 6. Thread-safe file naming with unique 2-digit thread IDs
 7. 🆕 Multi-data results saved to ./results/ folders for each strategy
@@ -26,8 +27,8 @@ NEW FEATURES:
 - 🔒 Thread-safe file operations
 - 📊 Real-time progress tracking across all threads
 - 💾 Clean file organization with thread IDs in names
-- 🆕 📈 MULTI-DATA TESTING: Validates strategies on 25+ assets/timeframes automatically!
-- 🆕 📊 CSV results showing performance across all data sources
+- 🆕 📈 MULTI-DATA TESTING: Validates strategies on crypto assets (BTC, ETH, SOL) across multiple timeframes!
+- 🆕 📊 CSV results showing performance across all crypto data sources
 
 Required Setup:
 1. Conda environment 'tflow' with backtesting packages
@@ -41,17 +42,35 @@ IMPORTANT: Each thread is fully independent and won't interfere with others!
 # Import execution functionality
 import subprocess
 import json
+import gc  # Memory management to prevent WinError 1455
 from pathlib import Path
 
 # Core imports
 import os
+
+# Set UTF-8 encoding for Windows terminal (fixes emoji display issues)
+if os.name == 'nt':  # Windows
+    import sys
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 import time
 import re
 import hashlib
 import csv
+import random
 import pandas as pd
 from datetime import datetime
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 import sys
 import argparse  # 🌙 Moon Dev: For command-line args
 from dotenv import load_dotenv
@@ -63,28 +82,32 @@ from io import BytesIO
 
 # Load environment variables FIRST
 load_dotenv()
-print("✅ Environment variables loaded")
+# Use ASCII-safe output for Windows compatibility
+print("[OK] Environment variables loaded")
 
 # Add config values directly to avoid import issues
 AI_TEMPERATURE = 0.7
-AI_MAX_TOKENS = 16000  # 🌙 Moon Dev: Increased for complete backtest code generation with execution block!
+AI_MAX_TOKENS = 4096  # GPT-4 Turbo max limit (reduced from 16000)
 
 # Import model factory with proper path handling
 import sys
-sys.path.append('/Users/md/Dropbox/dev/github/moon-dev-ai-agents-for-trading')
+# Add project root to path (works on both Windows and Unix)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 try:
     from src.models import model_factory
-    print("✅ Successfully imported model_factory")
+    print("[OK] Successfully imported model_factory")
 except ImportError as e:
-    print(f"⚠️ Could not import model_factory: {e}")
+    print(f"[ERROR] Could not import model_factory: {e}")
     sys.exit(1)
 
 # ============================================
 # 🎯 PARALLEL PROCESSING CONFIGURATION
 # ============================================
-MAX_PARALLEL_THREADS = 18  # How many ideas to process simultaneously
-RATE_LIMIT_DELAY = .5  # Seconds to wait between API calls (per thread)
+MAX_PARALLEL_THREADS = 9  # Optimized for rate limits: 3 Claude + 3 GPT-4o + 3 Groq
+RATE_LIMIT_DELAY = 1.0  # Increased to 1s to help with rate limits
 RATE_LIMIT_GLOBAL_DELAY = 0.5  # Global delay between any API calls
 
 # ============================================
@@ -101,16 +124,20 @@ RATE_LIMIT_GLOBAL_DELAY = 0.5  # Global delay between any API calls
 #   - Each FILE = one complete strategy idea
 #   - Perfect for auto-generated strategies from web search agent!
 #
-STRATEGIES_FROM_FILES = False  # Set to True to read from folder instead of ideas.txt
-STRATEGIES_FOLDER = "/Users/md/Dropbox/dev/github/moon-dev-ai-agents-for-trading/src/data/web_search_research/final_strategies"
+STRATEGIES_FROM_FILES = True  # Use pre-researched strategies from run_idea_generators.py
+STRATEGIES_FOLDER = os.path.join(project_root, "src", "data", "web_search_research", "final_strategies")
 
-# Thread color mapping
+# Thread color mapping (9 threads with distinct colors)
 THREAD_COLORS = {
-    0: "cyan",
-    1: "magenta",
-    2: "yellow",
-    3: "green",
-    4: "blue"
+    0: "cyan",      # Claude
+    1: "magenta",   # GPT-4o
+    2: "yellow",    # Groq
+    3: "green",     # Claude
+    4: "blue",      # GPT-4o
+    5: "red",       # Groq
+    6: "cyan",      # Claude
+    7: "magenta",   # GPT-4o
+    8: "yellow"     # Groq
 }
 
 # Global locks
@@ -133,36 +160,74 @@ rate_limiter = Semaphore(MAX_PARALLEL_THREADS)
 # - Claude: anthropic/claude-sonnet-4.5, anthropic/claude-haiku-4.5, anthropic/claude-opus-4.1
 # - GLM: z-ai/glm-4.6
 # See src/models/openrouter_model.py for ALL available models!
+#
+# OpenAI Direct Models:
+# - gpt-4-turbo, gpt-4, gpt-4-32k, gpt-3.5-turbo, gpt-3.5-turbo-16k
+# - o1-preview, o1-mini (reasoning models)
 
-# 🧠 RESEARCH: Grok 4 Fast Reasoning (xAI's blazing fast model!)
+# 🌙 DIRECT API CONFIG: Anthropic Claude + OpenAI GPT
+# Uses your existing API keys - no OpenRouter credits needed!
+
+# 🧠 RESEARCH: Grok via OpenRouter for strategy generation
 RESEARCH_CONFIG = {
-    "type": "xai",
-    "name": "grok-4-fast-reasoning"
+    "type": "openrouter",
+    "name": "x-ai/grok-code-fast-1"  # Grok reasoning model optimized for coding/strategy tasks
 }
 
-# 💻 BACKTEST CODE GEN: Grok 4 Fast Reasoning (xAI's blazing fast model!)
-BACKTEST_CONFIG = {
-    "type": "xai",
-    "name": "grok-4-fast-reasoning"
-}
+# 🎰 MULTI-MODEL CONFIGURATION FOR LOAD BALANCING
+# Each thread will rotate through different models to avoid rate limits
 
-# 🐛 DEBUGGING: Grok 4 Fast Reasoning (xAI's blazing fast model!)
-DEBUG_CONFIG = {
-    "type": "xai",
-    "name": "grok-4-fast-reasoning"
-}
+# Model pool for BACKTEST generation (9 models - 3-way rotation optimized for rate limits)
+# Pattern: Claude → GPT-4o → Groq (repeating)
+# 3 Claude + 3 GPT-4o + 3 Groq = Perfect balance under all rate limits
+BACKTEST_MODELS = [
+    {"type": "claude", "name": "claude-sonnet-4-5"},            # Thread 0 - Best for complex code
+    {"type": "openai", "name": "gpt-4o"},                       # Thread 1 - Excellent coder
+    {"type": "groq", "name": "llama-3.3-70b-versatile"},        # Thread 2 - Fast & free
+    {"type": "claude", "name": "claude-sonnet-4-5"},            # Thread 3
+    {"type": "openai", "name": "gpt-4o"},                       # Thread 4
+    {"type": "groq", "name": "llama-3.3-70b-versatile"},        # Thread 5
+    {"type": "claude", "name": "claude-sonnet-4-5"},            # Thread 6
+    {"type": "openai", "name": "gpt-4o"},                       # Thread 7
+    {"type": "groq", "name": "llama-3.3-70b-versatile"},        # Thread 8
+]
 
-# 📦 PACKAGE CHECK: Grok 4 Fast Reasoning (xAI's blazing fast model!)
+# Model pool for DEBUG phase (9 models - Grok to avoid rate limits)
+DEBUG_MODELS = [
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 0
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 1
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 2
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 3
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 4
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 5
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 6
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 7
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 8
+]
+
+# Single config for backwards compatibility (will be overridden by thread-specific selection)
+BACKTEST_CONFIG = BACKTEST_MODELS[0]
+DEBUG_CONFIG = DEBUG_MODELS[0]
+
+# 📦 PACKAGE CHECK: Using Grok to avoid GPT-4o rate limits
 PACKAGE_CONFIG = {
-    "type": "xai",
-    "name": "grok-4-fast-reasoning"
+    "type": "openrouter",
+    "name": "x-ai/grok-code-fast-1"  # Grok for package validation (no rate limits)
 }
 
-# 🚀 OPTIMIZATION: Grok 4 Fast Reasoning (xAI's blazing fast model!)
-OPTIMIZE_CONFIG = {
-    "type": "xai",
-    "name": "grok-4-fast-reasoning"
-}
+# 🚀 OPTIMIZATION: All using Grok (9 threads)
+OPTIMIZE_MODELS = [
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 0
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 1
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 2
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 3
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 4
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 5
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 6
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 7
+    {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},  # Thread 8
+]
+OPTIMIZE_CONFIG = OPTIMIZE_MODELS[0]
 
 # 🎯 PROFIT TARGET CONFIGURATION
 TARGET_RETURN = 50  # Target return in %
@@ -174,6 +239,98 @@ EXECUTION_TIMEOUT = 300  # 5 minutes
 
 # DeepSeek Configuration
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+
+# ============================================
+# 🛡️ MODEL VALIDATION & FALLBACK SYSTEM
+# ============================================
+# Permanent solution to prevent model initialization failures
+
+# Known valid OpenRouter model IDs (updated 2025-11-10)
+VALID_OPENROUTER_MODELS = {
+    # xAI Grok models
+    "x-ai/grok-4-fast": "Multimodal model with 2M context",
+    "x-ai/grok-code-fast-1": "Reasoning model optimized for coding",
+    "x-ai/grok-4-07-09": "Standard Grok 4 model",
+    "x-ai/grok-3-mini": "Lightweight variant",
+    "x-ai/grok-3": "Standard Grok 3 model",
+    # OpenAI via OpenRouter
+    "openai/gpt-4o": "GPT-4 Omni",
+    "openai/gpt-4-turbo": "GPT-4 Turbo",
+    # Claude via OpenRouter
+    "anthropic/claude-3-5-sonnet": "Claude 3.5 Sonnet",
+    "anthropic/claude-3-opus": "Claude 3 Opus",
+    # DeepSeek via OpenRouter
+    "deepseek/deepseek-r1": "DeepSeek R1 reasoning model",
+}
+
+# Fallback model configurations (guaranteed to work)
+FALLBACK_MODELS = {
+    "research": [
+        {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},
+        {"type": "openrouter", "name": "x-ai/grok-4-fast"},
+        {"type": "openai", "name": "gpt-4o"},  # Last resort
+    ],
+    "backtest": [
+        {"type": "groq", "name": "llama-3.3-70b-versatile"},  # Try Groq first (fast & free)
+        {"type": "openai", "name": "gpt-4o"},
+        {"type": "claude", "name": "claude-sonnet-4-5"},
+    ],
+    "debug": [
+        {"type": "openai", "name": "gpt-4o"},
+        {"type": "groq", "name": "llama-3.3-70b-versatile"},
+        {"type": "claude", "name": "claude-sonnet-4-5"},
+    ],
+    "optimize": [
+        {"type": "openrouter", "name": "x-ai/grok-code-fast-1"},
+        {"type": "openrouter", "name": "x-ai/grok-4-fast"},
+        {"type": "openai", "name": "gpt-4o"},
+    ],
+}
+
+def validate_model_config(model_config, phase="unknown"):
+    """
+    🛡️ Validate model configuration before use
+    Returns: (is_valid: bool, warning_message: str or None)
+    """
+    model_type = model_config.get("type", "")
+    model_name = model_config.get("name", "")
+
+    # Check if model type is supported
+    valid_types = ["claude", "openai", "deepseek", "groq", "gemini", "xai", "ollama", "openrouter"]
+    if model_type not in valid_types:
+        return False, f"Invalid model type '{model_type}'. Valid types: {valid_types}"
+
+    # Special validation for OpenRouter models
+    if model_type == "openrouter":
+        if model_name not in VALID_OPENROUTER_MODELS:
+            return False, f"OpenRouter model '{model_name}' not in validated list. Check https://openrouter.ai/docs"
+
+    return True, None
+
+def get_fallback_model(phase, thread_id):
+    """
+    🚨 Get fallback model when primary model fails
+    Tries fallback models in order until one works
+    """
+    fallbacks = FALLBACK_MODELS.get(phase, FALLBACK_MODELS["backtest"])
+
+    with console_lock:
+        cprint(f"\n[T{thread_id:02d}] 🔄 Attempting fallback models for {phase}...", "yellow")
+
+    for i, fallback in enumerate(fallbacks):
+        is_valid, warning = validate_model_config(fallback, phase)
+        if is_valid:
+            with console_lock:
+                cprint(f"[T{thread_id:02d}]   ✓ Fallback {i+1}/{len(fallbacks)}: {fallback['type']} - {fallback['name']}", "green")
+            return fallback
+        else:
+            with console_lock:
+                cprint(f"[T{thread_id:02d}]   ✗ Fallback {i+1}/{len(fallbacks)} invalid: {warning}", "red")
+
+    # Ultimate fallback
+    with console_lock:
+        cprint(f"[T{thread_id:02d}] ⚠️  All fallbacks failed! Using GPT-4o as last resort", "red", attrs=['bold'])
+    return {"type": "openai", "name": "gpt-4o"}
 
 # 🌙 Moon Dev: Date tracking for always-on mode - will update when date changes!
 CURRENT_DATE = datetime.now().strftime("%m_%d_%Y")
@@ -237,13 +394,64 @@ def update_date_folders():
 update_date_folders()
 
 # ============================================
+# 🛡️ STARTUP VALIDATION
+# ============================================
+def validate_all_configs():
+    """
+    🚨 Pre-flight validation: Check all model configs BEFORE starting threads
+    This prevents runtime failures and wasted API calls
+    """
+    print("\n" + "="*60)
+    cprint("🛡️  SYSTEM STARTUP VALIDATION", "cyan", attrs=['bold'])
+    print("="*60 + "\n")
+
+    all_valid = True
+    configs_to_check = [
+        ("RESEARCH", RESEARCH_CONFIG),
+        ("PACKAGE", PACKAGE_CONFIG),
+    ]
+
+    # Add all backtest models
+    for i, config in enumerate(BACKTEST_MODELS):
+        configs_to_check.append((f"BACKTEST_MODEL_{i}", config))
+
+    # Add all debug models
+    for i, config in enumerate(DEBUG_MODELS):
+        configs_to_check.append((f"DEBUG_MODEL_{i}", config))
+
+    # Add all optimize models
+    for i, config in enumerate(OPTIMIZE_MODELS):
+        configs_to_check.append((f"OPTIMIZE_MODEL_{i}", config))
+
+    for name, config in configs_to_check:
+        is_valid, warning = validate_model_config(config, name)
+        if is_valid:
+            cprint(f"  ✅ {name:20s} | {config['type']:12s} | {config['name']}", "green")
+        else:
+            cprint(f"  ❌ {name:20s} | {config['type']:12s} | {config['name']}", "red")
+            cprint(f"     └─ {warning}", "yellow")
+            all_valid = False
+
+    print("\n" + "="*60)
+    if all_valid:
+        cprint("✅ ALL CONFIGURATIONS VALID - READY TO START", "green", attrs=['bold'])
+    else:
+        cprint("⚠️  SOME CONFIGURATIONS INVALID - WILL USE FALLBACKS", "yellow", attrs=['bold'])
+    print("="*60 + "\n")
+
+    return all_valid
+
+# Run validation on startup
+validate_all_configs()
+
+# ============================================
 # 🎨 THREAD-SAFE PRINTING
 # ============================================
 
 def thread_print(message, thread_id, color=None, attrs=None):
     """Thread-safe colored print with thread ID prefix"""
     if color is None:
-        color = THREAD_COLORS.get(thread_id % 5, "white")
+        color = THREAD_COLORS.get(thread_id % 9, "white")
 
     with console_lock:
         prefix = f"[T{thread_id:02d}]"
@@ -251,7 +459,7 @@ def thread_print(message, thread_id, color=None, attrs=None):
 
 def thread_print_status(thread_id, phase, message):
     """Print status update for a specific phase"""
-    color = THREAD_COLORS.get(thread_id % 5, "white")
+    color = THREAD_COLORS.get(thread_id % 9, "white")
     with console_lock:
         cprint(f"[T{thread_id:02d}] {phase}: {message}", color)
 
@@ -261,21 +469,41 @@ def thread_print_status(thread_id, phase, message):
 
 def rate_limited_api_call(func, thread_id, *args, **kwargs):
     """
-    Wrapper for API calls with rate limiting
+    Wrapper for API calls with rate limiting and retry logic
     - Per-thread rate limiting (RATE_LIMIT_DELAY)
     - Global rate limiting (RATE_LIMIT_GLOBAL_DELAY)
+    - Automatic retry with exponential backoff for rate limits
     """
-    # Global rate limit (quick check)
-    with api_lock:
-        time.sleep(RATE_LIMIT_GLOBAL_DELAY)
+    max_retries = 5
 
-    # Execute the API call
-    result = func(*args, **kwargs)
+    for attempt in range(max_retries):
+        try:
+            # Global rate limit (quick check)
+            with api_lock:
+                time.sleep(RATE_LIMIT_GLOBAL_DELAY)
 
-    # Per-thread rate limit
-    time.sleep(RATE_LIMIT_DELAY)
+            # Execute the API call
+            result = func(*args, **kwargs)
 
-    return result
+            # Per-thread rate limit
+            time.sleep(RATE_LIMIT_DELAY)
+
+            return result
+
+        except Exception as e:
+            error_str = str(e).lower()
+            # Check if it's a rate limit error
+            if "rate" in error_str and "limit" in error_str:
+                wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff with jitter
+                thread_print(f"⏰ Rate limit hit, waiting {wait_time:.1f}s (attempt {attempt+1}/{max_retries})", thread_id)
+                time.sleep(wait_time)
+                continue
+            else:
+                # Not a rate limit error, raise immediately
+                raise e
+
+    # If we exhausted all retries
+    raise Exception(f"Max retries ({max_retries}) reached for API call")
 
 # ============================================
 # 📄 PDF & YOUTUBE EXTRACTION - Moon Dev
@@ -507,11 +735,13 @@ RISK MANAGEMENT:
 
 If you need indicators use TA lib or pandas TA.
 
-Use this data path: /Users/md/Dropbox/dev/github/moon-dev-ai-agents-for-trading/src/data/rbi/BTC-USD-15m.csv
-the above data head looks like below
-datetime, open, high, low, close, volume,
-2023-01-01 00:00:00, 16531.83, 16532.69, 16509.11, 16510.82, 231.05338022,
-2023-01-01 00:15:00, 16509.78, 16534.66, 16509.11, 16533.43, 308.12276951,
+Use this data path (relative to project root): src/data/ohlcv/BTC-USDT-15m.csv
+Or use absolute Windows path: C:/Users/oia89/OneDrive/Desktop/DEX-dev-ai-agents/src/data/ohlcv/BTC-USDT-15m.csv
+
+The data CSV format:
+datetime,open,high,low,close,volume,timestamp
+2023-01-01 00:00:00,16531.83,16532.69,16509.11,16510.82,231.05338022,1672531200000
+2023-01-01 00:15:00,16509.78,16534.66,16509.11,16533.43,308.12276951,1672532100000
 
 Always add plenty of Moon Dev themed debug prints with emojis to make debugging easier! 🌙 ✨ 🚀
 
@@ -528,14 +758,24 @@ Copy this EXACT template and replace YourStrategyClassName with your actual clas
 if __name__ == "__main__":
     import sys
     import os
+    import io
     from backtesting import Backtest
     import pandas as pd
 
+    # Set UTF-8 encoding for Windows terminal (fixes emoji display issues)
+    if os.name == 'nt':  # Windows
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
     # FIRST: Run standard backtest and print stats (REQUIRED for parsing!)
     print("\\n🌙 Running initial backtest for stats extraction...")
-    data = pd.read_csv('/Users/md/Dropbox/dev/github/moon-dev-ai-agents-for-trading/src/data/rbi/BTC-USD-15m.csv')
+    import os
+    data_path = os.path.join('src', 'data', 'ohlcv', 'BTC-USDT-15m.csv')
+    data = pd.read_csv(data_path)
     data['datetime'] = pd.to_datetime(data['datetime'])
     data = data.set_index('datetime')
+    # Select only OHLCV columns (exclude timestamp column)
+    data = data[['open', 'high', 'low', 'close', 'volume']]
     data.columns = ['Open', 'High', 'Low', 'Close', 'Volume']
 
     bt = Backtest(data, YourStrategyClassName, cash=1_000_000, commission=0.002)
@@ -548,24 +788,37 @@ if __name__ == "__main__":
     print(stats)
     print("="*80 + "\\n")
 
-    # THEN: Run multi-data testing
-    sys.path.append('/Users/md/Dropbox/dev/github/moon-dev-trading-bots/backtests')
-    from multi_data_tester import test_on_all_data
+    # THEN: Run multi-data testing (OPTIONAL - gracefully handles missing module)
+    # CRITICAL FIX: Backtest is at src/data/rbi_pp_multi/DATE/backtests/, need to go to src/scripts
+    # Path: ../../../.. (4 levels up to project root) then src/scripts
+    try:
+        project_root = os.path.join(os.path.dirname(__file__), '..', '..', '..', '..')
+        scripts_path = os.path.join(project_root, 'src', 'scripts')
+        sys.path.insert(0, scripts_path)  # Insert at front to ensure it's found first
+        from multi_data_tester_parallel import test_on_all_data_parallel
 
-    print("\\n" + "="*80)
-    print("🚀 MOON DEV'S MULTI-DATA BACKTEST - Testing on 25+ Data Sources!")
-    print("="*80)
+        print("\\n" + "="*80)
+        print("🚀 MOON DEV'S PARALLEL MULTI-DATA BACKTEST - Testing on 12 Crypto Datasets!")
+        print("="*80)
 
-    # Test this strategy on all configured data sources
-    # This will test on: BTC, ETH, SOL (multiple timeframes), AAPL, TSLA, ES, NQ, GOOG, NVDA
-    # IMPORTANT: verbose=False to prevent plotting (causes timeouts in parallel processing!)
-    results = test_on_all_data(YourStrategyClassName, 'YourStrategyName', verbose=False)
+        # Test this strategy on all configured data sources
+        # 🌙 ACTIVE TESTING: BTC, ETH, SOL (multiple timeframes)
+        # 📊 COMMENTED OUT (in multi_data_tester.py): AAPL, TSLA, ES, NQ, GOOG, NVDA (stocks & futures)
+        # IMPORTANT: verbose=False to prevent plotting (causes timeouts in parallel processing!)
+        results = test_on_all_data_parallel(YourStrategyClassName, 'YourStrategyName', verbose=False, parallel=True, max_workers=4)
 
-    if results is not None:
-        print("\\n✅ Multi-data testing complete! Results saved in ./results/ folder")
-        print(f"📊 Tested on {len(results)} different data sources")
-    else:
-        print("\\n⚠️ No results generated - check for errors above")
+        if results is not None:
+            print("\\n✅ Multi-data testing complete! Results saved in ./results/ folder")
+            print(f"📊 Tested on {len(results)} different data sources")
+        else:
+            print("\\n⚠️ No results generated - check for errors above")
+    except (ImportError, ModuleNotFoundError) as e:
+        print(f"\\n⚠️ Multi-data testing skipped: {str(e)}")
+        print("💡 This is OK - the main backtest above shows the strategy performance")
+        print("🔧 To enable multi-data testing, ensure multi_data_tester.py is in src/scripts/")
+    except Exception as e:
+        print(f"\\n⚠️ Multi-data testing error: {str(e)}")
+        print("💡 Main backtest completed successfully above")
 ```
 
 IMPORTANT: Replace 'YourStrategyClassName' with your actual strategy class name!
@@ -827,7 +1080,7 @@ def log_stats_to_csv(strategy_name: str, thread_id: int, stats: dict, file_path:
             # Create CSV with headers if it doesn't exist
             file_exists = STATS_CSV.exists()
 
-            with open(STATS_CSV, 'a', newline='') as f:
+            with open(STATS_CSV, 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
 
                 # Write header if new file
@@ -971,13 +1224,13 @@ def save_backtest_if_threshold_met(code: str, stats: dict, strategy_name: str, i
         # Save to WORKING folder
         working_file = WORKING_BACKTEST_DIR / filename
         with file_lock:
-            with open(working_file, 'w') as f:
+            with open(working_file, 'w', encoding='utf-8') as f:
                 f.write(code)
 
         # Save to FINAL folder (same logic per Moon Dev's request)
         final_file = FINAL_BACKTEST_DIR / filename
         with file_lock:
-            with open(final_file, 'w') as f:
+            with open(final_file, 'w', encoding='utf-8') as f:
                 f.write(code)
 
         thread_print(f"💾 Saved to working & final! Return: {return_pct:.2f}%", thread_id, "green", attrs=['bold'])
@@ -998,17 +1251,32 @@ def execute_backtest(file_path: str, strategy_name: str, thread_id: int) -> dict
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
 
+    # USING BASE PYTHON: Packages are installed in base Python already!
+    # Confirmed by: python -c "import backtesting; import pandas_ta; import talib; print('✅ All packages OK!')"
+    # Result: ✅ All packages OK!
+
+    # Use absolute path to Python that has the packages
+    python_exe = r"C:\Python313\python.exe"
+
+    # Fallback to sys.executable if the specific path doesn't exist
+    if not os.path.exists(python_exe):
+        python_exe = sys.executable
+
     cmd = [
-        "conda", "run", "-n", CONDA_ENV,
-        "python", str(file_path)
+        python_exe,  # Uses the Python that HAS the packages!
+        str(file_path)
     ]
 
     start_time = datetime.now()
 
+    # CRITICAL FIX: Explicitly use UTF-8 encoding for subprocess to avoid UnicodeDecodeError
+    # Windows defaults to cp1252, but backtest output contains UTF-8 characters
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
+        encoding='utf-8',
+        errors='replace',  # Replace undecodable bytes instead of crashing
         timeout=EXECUTION_TIMEOUT
     )
 
@@ -1026,13 +1294,16 @@ def execute_backtest(file_path: str, strategy_name: str, thread_id: int) -> dict
     # Save execution results with thread ID
     result_file = EXECUTION_DIR / f"T{thread_id:02d}_{strategy_name}_{datetime.now().strftime('%H%M%S')}.json"
     with file_lock:
-        with open(result_file, 'w') as f:
+        with open(result_file, 'w', encoding='utf-8') as f:
             json.dump(output, f, indent=2)
 
     if output['success']:
         thread_print(f"✅ Backtest executed in {execution_time:.2f}s!", thread_id, "green")
     else:
         thread_print(f"❌ Backtest failed: {output['return_code']}", thread_id, "red")
+
+    # CRITICAL FIX: Force garbage collection to free memory and prevent WinError 1455
+    gc.collect()
 
     return output
 
@@ -1053,11 +1324,14 @@ def is_idea_processed(idea: str) -> bool:
 
     idea_hash = get_idea_hash(idea)
 
-    with file_lock:
-        with open(PROCESSED_IDEAS_LOG, 'r') as f:
-            processed_hashes = [line.strip().split(',')[0] for line in f if line.strip()]
-
-    return idea_hash in processed_hashes
+    try:
+        with file_lock:
+            with open(PROCESSED_IDEAS_LOG, 'r', encoding='utf-8', errors='replace') as f:
+                processed_hashes = [line.strip().split(',')[0] for line in f if line.strip()]
+        return idea_hash in processed_hashes
+    except Exception as e:
+        # If error reading log, assume not processed to avoid losing ideas
+        return False
 
 def log_processed_idea(idea: str, strategy_name: str, thread_id: int) -> None:
     """Log an idea as processed with timestamp and strategy name (thread-safe)"""
@@ -1067,12 +1341,12 @@ def log_processed_idea(idea: str, strategy_name: str, thread_id: int) -> None:
     with file_lock:
         if not PROCESSED_IDEAS_LOG.exists():
             PROCESSED_IDEAS_LOG.parent.mkdir(parents=True, exist_ok=True)
-            with open(PROCESSED_IDEAS_LOG, 'w') as f:
+            with open(PROCESSED_IDEAS_LOG, 'w', encoding='utf-8') as f:
                 f.write("# Moon Dev's RBI AI - Processed Ideas Log 🌙\n")
                 f.write("# Format: hash,timestamp,thread_id,strategy_name,idea_snippet\n")
 
         idea_snippet = idea[:50].replace(',', ';') + ('...' if len(idea) > 50 else '')
-        with open(PROCESSED_IDEAS_LOG, 'a') as f:
+        with open(PROCESSED_IDEAS_LOG, 'a', encoding='utf-8') as f:
             f.write(f"{idea_hash},{timestamp},T{thread_id:02d},{strategy_name},{idea_snippet}\n")
 
     thread_print(f"📝 Logged processed idea: {strategy_name}", thread_id, "green")
@@ -1106,37 +1380,84 @@ def analyze_no_trades_issue(execution_result: dict) -> str:
 
     return "Strategy executed but took 0 trades, resulting in NaN values. Please adjust the strategy logic to actually generate trading signals and take trades."
 
-def chat_with_model(system_prompt, user_content, model_config, thread_id):
-    """Chat with AI model using model factory with rate limiting"""
-    def _api_call():
-        model = model_factory.get_model(model_config["type"], model_config["name"])
-        if not model:
-            raise ValueError(f"🚨 Could not initialize {model_config['type']} {model_config['name']} model!")
+def chat_with_model(system_prompt, user_content, model_config, thread_id, phase="unknown"):
+    """
+    🛡️ Chat with AI model using model factory with validation, fallback, and rate limiting
 
-        if model_config["type"] == "ollama":
-            response = model.generate_response(
-                system_prompt=system_prompt,
-                user_content=user_content,
-                temperature=AI_TEMPERATURE
-            )
-            if isinstance(response, str):
-                return response
-            if hasattr(response, 'content'):
-                return response.content
-            return str(response)
-        else:
-            response = model.generate_response(
-                system_prompt=system_prompt,
-                user_content=user_content,
-                temperature=AI_TEMPERATURE,
-                max_tokens=AI_MAX_TOKENS
-            )
-            if not response:
-                raise ValueError("Model returned None response")
-            return response.content
+    Permanent solution that:
+    1. Validates model config before attempting
+    2. Tries fallback models if primary fails
+    3. Never crashes the thread completely
+    """
+    # First attempt with primary model
+    current_config = model_config.copy()
+    max_attempts = 3  # Try primary + 2 fallbacks
 
-    # Apply rate limiting
-    return rate_limited_api_call(_api_call, thread_id)
+    for attempt in range(max_attempts):
+        # Validate model before attempting
+        is_valid, warning = validate_model_config(current_config, phase)
+        if not is_valid and attempt == 0:
+            with console_lock:
+                cprint(f"[T{thread_id:02d}] ⚠️  Primary model validation failed: {warning}", "yellow")
+            # Get fallback immediately
+            current_config = get_fallback_model(phase, thread_id)
+            continue
+
+        def _api_call():
+            try:
+                model = model_factory.get_model(current_config["type"], current_config["name"])
+                if not model:
+                    raise ValueError(f"🚨 Could not initialize {current_config['type']} {current_config['name']} model!")
+
+                if current_config["type"] == "ollama":
+                    response = model.generate_response(
+                        system_prompt=system_prompt,
+                        user_content=user_content,
+                        temperature=AI_TEMPERATURE
+                    )
+                    if isinstance(response, str):
+                        return response
+                    if hasattr(response, 'content'):
+                        return response.content
+                    return str(response)
+                else:
+                    response = model.generate_response(
+                        system_prompt=system_prompt,
+                        user_content=user_content,
+                        temperature=AI_TEMPERATURE,
+                        max_tokens=AI_MAX_TOKENS
+                    )
+                    if not response:
+                        raise ValueError("Model returned None response")
+                    return response.content
+            except Exception as e:
+                # Log the error but allow fallback logic to handle it
+                with console_lock:
+                    cprint(f"[T{thread_id:02d}] ❌ Model error: {str(e)[:100]}", "red")
+                raise
+
+        try:
+            # Apply rate limiting and execute
+            result = rate_limited_api_call(_api_call, thread_id)
+            if result:
+                if attempt > 0:
+                    with console_lock:
+                        cprint(f"[T{thread_id:02d}] ✅ Fallback model succeeded!", "green", attrs=['bold'])
+                return result
+        except Exception as e:
+            if attempt < max_attempts - 1:
+                with console_lock:
+                    cprint(f"[T{thread_id:02d}] 🔄 Attempt {attempt + 1} failed, trying fallback...", "yellow")
+                # Get next fallback
+                current_config = get_fallback_model(phase, thread_id)
+                time.sleep(2)  # Brief delay before retry
+            else:
+                # All attempts exhausted
+                with console_lock:
+                    cprint(f"[T{thread_id:02d}] ❌ All model attempts failed for {phase}", "red", attrs=['bold'])
+                raise ValueError(f"🚨 Could not initialize any model for {phase} after {max_attempts} attempts!")
+
+    raise ValueError(f"🚨 Exhausted all model attempts for {phase}!")
 
 def clean_model_output(output, content_type="text"):
     """Clean model output by removing thinking tags and extracting code from markdown"""
@@ -1190,7 +1511,8 @@ def research_strategy(content, thread_id):
         RESEARCH_PROMPT,
         content,
         RESEARCH_CONFIG,
-        thread_id
+        thread_id,
+        phase="research"
     )
 
     if output:
@@ -1215,7 +1537,7 @@ def research_strategy(content, thread_id):
         # Add thread ID to filename
         filepath = RESEARCH_DIR / f"T{thread_id:02d}_{strategy_name}_strategy.txt"
         with file_lock:
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(output)
 
         return output, strategy_name
@@ -1225,11 +1547,16 @@ def create_backtest(strategy, strategy_name, thread_id):
     """Backtest AI: Creates backtest implementation"""
     thread_print_status(thread_id, "📊 BACKTEST", "Creating backtest code...")
 
+    # Select model based on thread ID to distribute load
+    model_config = BACKTEST_MODELS[thread_id % len(BACKTEST_MODELS)]
+    thread_print(f"Using model: {model_config['type']}/{model_config['name']}", thread_id)
+
     output = chat_with_model(
         BACKTEST_PROMPT,
         f"Create a backtest for this strategy:\n\n{strategy}",
-        BACKTEST_CONFIG,
-        thread_id
+        model_config,
+        thread_id,
+        phase="backtest"
     )
 
     if output:
@@ -1237,7 +1564,7 @@ def create_backtest(strategy, strategy_name, thread_id):
 
         filepath = BACKTEST_DIR / f"T{thread_id:02d}_{strategy_name}_BT.py"
         with file_lock:
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(output)
 
         thread_print(f"🔥 Backtest code saved", thread_id, "green")
@@ -1252,7 +1579,8 @@ def package_check(backtest_code, strategy_name, thread_id):
         PACKAGE_PROMPT,
         f"Check and fix indicator packages in this code:\n\n{backtest_code}",
         PACKAGE_CONFIG,
-        thread_id
+        thread_id,
+        phase="debug"
     )
 
     if output:
@@ -1260,7 +1588,7 @@ def package_check(backtest_code, strategy_name, thread_id):
 
         filepath = PACKAGE_DIR / f"T{thread_id:02d}_{strategy_name}_PKG.py"
         with file_lock:
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(output)
 
         thread_print(f"📦 Package check complete", thread_id, "green")
@@ -1271,13 +1599,19 @@ def debug_backtest(backtest_code, error_message, strategy_name, thread_id, itera
     """Debug AI: Fixes technical issues in backtest code"""
     thread_print_status(thread_id, f"🔧 DEBUG #{iteration}", "Fixing errors...")
 
+    # Rotate through debug models based on thread ID and iteration
+    model_index = (thread_id + iteration) % len(DEBUG_MODELS)
+    model_config = DEBUG_MODELS[model_index]
+    thread_print(f"Debug with: {model_config['type']}/{model_config['name']}", thread_id)
+
     debug_prompt_with_error = DEBUG_PROMPT.format(error_message=error_message)
 
     output = chat_with_model(
         debug_prompt_with_error,
         f"Fix this backtest code:\n\n{backtest_code}",
-        DEBUG_CONFIG,
-        thread_id
+        model_config,
+        thread_id,
+        phase="debug"
     )
 
     if output:
@@ -1287,7 +1621,7 @@ def debug_backtest(backtest_code, error_message, strategy_name, thread_id, itera
         # Only threshold-passing backtests go to FINAL/WORKING folders!
         filepath = BACKTEST_DIR / f"T{thread_id:02d}_{strategy_name}_DEBUG_v{iteration}.py"
         with file_lock:
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(output)
 
         thread_print(f"🔧 Debug iteration {iteration} complete", thread_id, "green")
@@ -1298,6 +1632,11 @@ def optimize_strategy(backtest_code, current_return, target_return, strategy_nam
     """Optimization AI: Improves strategy to hit target return"""
     thread_print_status(thread_id, f"🎯 OPTIMIZE #{iteration}", f"{current_return}% → {target_return}%")
 
+    # Rotate through optimize models to distribute load
+    model_index = (thread_id + iteration) % len(OPTIMIZE_MODELS)
+    model_config = OPTIMIZE_MODELS[model_index]
+    thread_print(f"Optimize with: {model_config['type']}/{model_config['name']}", thread_id)
+
     optimize_prompt_with_stats = OPTIMIZE_PROMPT.format(
         current_return=current_return,
         target_return=target_return
@@ -1306,8 +1645,9 @@ def optimize_strategy(backtest_code, current_return, target_return, strategy_nam
     output = chat_with_model(
         optimize_prompt_with_stats,
         f"Optimize this backtest code to hit the target:\n\n{backtest_code}",
-        OPTIMIZE_CONFIG,
-        thread_id
+        model_config,
+        thread_id,
+        phase="optimize"
     )
 
     if output:
@@ -1315,7 +1655,7 @@ def optimize_strategy(backtest_code, current_return, target_return, strategy_nam
 
         filepath = OPTIMIZATION_DIR / f"T{thread_id:02d}_{strategy_name}_OPT_v{iteration}.py"
         with file_lock:
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(output)
 
         thread_print(f"🎯 Optimization {iteration} complete", thread_id, "green")
@@ -1415,7 +1755,7 @@ def process_trading_idea_parallel(idea: str, thread_id: int) -> dict:
                         thread_print("⚠️ Could not parse return", thread_id, "yellow")
                         final_file = FINAL_BACKTEST_DIR / f"T{thread_id:02d}_{strategy_name}_BTFinal_WORKING.py"
                         with file_lock:
-                            with open(final_file, 'w') as f:
+                            with open(final_file, 'w', encoding='utf-8') as f:
                                 f.write(current_code)
                         break
 
@@ -1446,7 +1786,7 @@ def process_trading_idea_parallel(idea: str, thread_id: int) -> dict:
                         # 🌙 Moon Dev: Save to OPTIMIZATION_DIR for target hits
                         final_file = OPTIMIZATION_DIR / f"T{thread_id:02d}_{strategy_name}_TARGET_HIT_{current_return}pct.py"
                         with file_lock:
-                            with open(final_file, 'w') as f:
+                            with open(final_file, 'w', encoding='utf-8') as f:
                                 f.write(current_code)
 
                         return {
@@ -1528,7 +1868,7 @@ def process_trading_idea_parallel(idea: str, thread_id: int) -> dict:
 
                                     final_file = OPTIMIZATION_DIR / f"T{thread_id:02d}_{strategy_name}_TARGET_HIT_{new_return}pct.py"
                                     with file_lock:
-                                        with open(final_file, 'w') as f:
+                                        with open(final_file, 'w', encoding='utf-8') as f:
                                             f.write(best_code)
 
                                     return {
@@ -1545,7 +1885,7 @@ def process_trading_idea_parallel(idea: str, thread_id: int) -> dict:
 
                         best_file = OPTIMIZATION_DIR / f"T{thread_id:02d}_{strategy_name}_BEST_{best_return}pct.py"
                         with file_lock:
-                            with open(best_file, 'w') as f:
+                            with open(best_file, 'w', encoding='utf-8') as f:
                                 f.write(best_code)
 
                         return {
@@ -1617,23 +1957,40 @@ def get_strategies_from_files():
 
 
 def idea_monitor_thread(idea_queue: Queue, queued_ideas: set, queued_lock: Lock, stop_flag: dict):
-    """🌙 Moon Dev: Producer thread - monitors ideas.txt OR strategy files and queues new ideas"""
+    """🌙 Moon Dev: Producer thread - monitors BOTH ideas.txt AND strategy files"""
     global IDEAS_FILE
 
     while not stop_flag.get('stop', False):
         try:
-            # 🌙 Moon Dev: Check which mode we're in
-            if STRATEGIES_FROM_FILES:
-                # MODE: Read from files
-                ideas = get_strategies_from_files()
-            else:
-                # MODE: Read from ideas.txt (classic behavior)
-                if not IDEAS_FILE.exists():
-                    time.sleep(1)
-                    continue
+            ideas = []
 
-                with open(IDEAS_FILE, 'r') as f:
-                    ideas = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+            # 🌙 Moon Dev: DUAL MODE - Check BOTH sources!
+            # Priority 1: Check for pre-researched strategies if enabled
+            if STRATEGIES_FROM_FILES:
+                strategy_ideas = get_strategies_from_files()
+                if strategy_ideas:
+                    with console_lock:
+                        cprint(f"📁 Found {len(strategy_ideas)} pre-researched strategies", "cyan")
+                    ideas.extend(strategy_ideas)
+
+            # Priority 2: ALWAYS check ideas.txt for raw ideas
+            if IDEAS_FILE.exists():
+                try:
+                    with open(IDEAS_FILE, 'r', encoding='utf-8', errors='ignore') as f:
+                        raw_ideas = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
+                    if raw_ideas:
+                        with console_lock:
+                            cprint(f"💡 Found {len(raw_ideas)} raw ideas in ideas.txt", "yellow")
+                        ideas.extend(raw_ideas)
+                except Exception as e:
+                    with console_lock:
+                        cprint(f"⚠️ Error reading ideas.txt: {str(e)}", "yellow")
+
+            # If no ideas from either source, wait and retry
+            if not ideas:
+                time.sleep(1)
+                continue
 
             # Find new unprocessed ideas
             for idea in ideas:
@@ -1753,7 +2110,7 @@ def main(ideas_file_path=None, run_name=None):
     if not IDEAS_FILE.exists():
         cprint(f"❌ ideas.txt not found! Creating template...", "red")
         IDEAS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(IDEAS_FILE, 'w') as f:
+        with open(IDEAS_FILE, 'w', encoding='utf-8') as f:
             f.write("# Add your trading ideas here (one per line)\n")
             f.write("# Can be YouTube URLs, PDF links, or text descriptions\n")
             f.write("# Lines starting with # are ignored\n\n")

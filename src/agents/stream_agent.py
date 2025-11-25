@@ -22,7 +22,16 @@ import time
 from datetime import datetime
 import pyaudio
 import openai
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from dotenv import load_dotenv
 import base64
 from src.models import model_factory

@@ -1,0 +1,12 @@
+STRATEGY_NAME: PassiveLonghold
+
+INDICATORS_REQUIRED:
+
+ENTRY_CONDITIONS:
+Buy the stock at any time with no specific conditions; hold indefinitely.
+
+EXIT_CONDITIONS:
+No specific exit conditions; hold the position long-term without selling.
+
+STRATEGY_DETAILS:
+This is a fundamental buy-and-hold strategy focused on long-term investment in a single stock. It assumes the stock's value will appreciate over time due to company growth, dividends, or market trends, without relying on technical indicators, timing, or active trading signals. Entry occurs upon initial purchase (e.g., at market open or any suitable point), and the position is maintained perpetually unless external factors like fundamental changes prompt manual intervention. No risk management rules, stop-losses, or profit targets are defined, making it suitable for conservative, patient investors but vulnerable to market downturns. Backtesting would simply simulate purchasing at the start date and holding until the end date, calculating total return including dividends if applicable.

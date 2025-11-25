@@ -1,0 +1,83 @@
+{
+  "BTC": {
+    "action": "NEUTRAL",
+    "confidence": 50,
+    "fusion_score": 0.0,
+    "reasoning": "No setup detected from either engine",
+    "engines": {
+      "volume": {
+        "action": "NOTHING",
+        "confidence": 0,
+        "rvol": 0,
+        "z_score": 0,
+        "persistence": "",
+        "signal_quality": "",
+        "age_minutes": 0
+      },
+      "funding": {
+        "action": "NOTHING",
+        "confidence": 0,
+        "annual_rate": 0,
+        "positioning": "",
+        "squeeze_risk": "",
+        "reasoning": "",
+        "age_minutes": 2889.8
+      }
+    },
+    "timestamp": "2025-11-15T13:06:43.584885Z"
+  },
+  "ETH": {
+    "action": "NEUTRAL",
+    "confidence": 50,
+    "fusion_score": 0.0,
+    "reasoning": "No setup detected from either engine",
+    "engines": {
+      "volume": {
+        "action": "NOTHING",
+        "confidence": 0,
+        "rvol": 0,
+        "z_score": 0,
+        "persistence": "",
+        "signal_quality": "",
+        "age_minutes": 0
+      },
+      "funding": {
+        "action": "NOTHING",
+        "confidence": 0,
+        "annual_rate": 0,
+        "positioning": "",
+        "squeeze_risk": "",
+        "reasoning": "",
+        "age_minutes": 2889.8
+      }
+    },
+    "timestamp": "2025-11-15T13:06:43.585227Z"
+  },
+  "SOL": {
+    "action": "NEUTRAL",
+    "confidence": 50,
+    "fusion_score": 0.0,
+    "reasoning": "No setup detected from either engine",
+    "engines": {
+      "volume": {
+        "action": "NOTHING",
+        "confidence": 0,
+        "rvol": 0,
+        "z_score": 0,
+        "persistence": "",
+        "signal_quality": "",
+        "age_minutes": 0
+      },
+      "funding": {
+        "action": "NOTHING",
+        "confidence": 0,
+        "annual_rate": 0,
+        "positioning": "",
+        "squeeze_risk": "",
+        "reasoning": "",
+        "age_minutes": 2889.8
+      }
+    },
+    "timestamp": "2025-11-15T13:06:43.585546Z"
+  }
+}

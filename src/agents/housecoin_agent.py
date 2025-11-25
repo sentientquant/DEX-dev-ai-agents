@@ -27,7 +27,16 @@ import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import pandas as pd
-from termcolor import colored, cprint
+# Make termcolor optional
+try:
+    from termcolor import colored, cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from dotenv import load_dotenv
 import requests
 
@@ -97,9 +106,9 @@ TRADING_END_HOUR = 20  # 8 PM ET (20:00 in 24-hour format)
 SLIPPAGE = 499  # 5% slippage
 PRIORITY_FEE = 20000  # Priority fee for transactions
 
-# AI Model Configuration
-AI_MODEL_TYPE = 'xai'  # Using xAI's Grok for fast reasoning
-AI_MODEL_NAME = 'grok-4-fast-reasoning'  # Grok-4 fast - best value with 2M context!
+# AI Model Configuration (FIXED - using valid model)
+AI_MODEL_TYPE = 'openrouter'  # Using OpenRouter for xAI access
+AI_MODEL_NAME = 'x-ai/grok-code-fast-1'  # FIXED: Valid OpenRouter model ID
 AI_TEMPERATURE = 0.3  # Lower temperature for more consistent decisions
 AI_MAX_TOKENS = 150  # Short responses for buy/don't buy decisions
 

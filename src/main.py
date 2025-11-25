@@ -5,7 +5,16 @@ Main entry point for running trading agents
 
 import os
 import sys
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from dotenv import load_dotenv
 import time
 from datetime import datetime, timedelta
@@ -29,7 +38,7 @@ load_dotenv()
 ACTIVE_AGENTS = {
     'risk': False,      # Risk management agent
     'trading': False,   # LLM trading agent
-    'strategy': False,  # Strategy-based trading agent
+    'strategy': True,  # Strategy-based trading agent
     'copybot': False,   # CopyBot agent
     'sentiment': False, # Run sentiment_agent.py directly instead
     # whale_agent is run from whale_agent.py

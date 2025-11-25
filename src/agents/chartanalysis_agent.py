@@ -23,6 +23,7 @@ import traceback
 import base64
 from io import BytesIO
 import re
+import requests  # For Binance API
 
 # Get the project root directory
 PROJECT_ROOT = Path(__file__).parent.parent.parent
@@ -33,7 +34,7 @@ TIMEFRAMES = ['15m']#['15m', '1h', '4h', '1d']  # Multiple timeframes to analyze
 LOOKBACK_BARS = 100  # Number of candles to analyze
 
 # Trading Pairs to Monitor
-SYMBOLS = ["BTC", "FARTCOIN"]  # Add or modify symbols here
+SYMBOLS = ["BTC", "ETH", "SOL"]  # Main trading pairs: BTCUSDT, ETHUSDT, SOLUSDT
 
 # Chart Settings
 CHART_STYLE = 'charles'  # mplfinance style
@@ -310,16 +311,69 @@ class ChartAnalysisAgent(BaseAgent):
     def analyze_symbol(self, symbol, timeframe):
         """Analyze a single symbol on a specific timeframe"""
         try:
-            # Get market data
-            data = hl.get_data(
-                symbol=symbol,
-                timeframe=timeframe,
-                bars=LOOKBACK_BARS,
-                add_indicators=True
-            )
-            
+            # Get market data from Binance (primary) or Hyperliquid (backup)
+            data = None
+
+            # Map timeframes to Binance format
+            timeframe_map = {
+                '15m': '15m',
+                '1h': '1h',
+                '4h': '4h',
+                '1d': '1d'
+            }
+
+            try:
+                # Try Binance first (FREE, faster)
+                print(f"📊 Fetching {symbol} data from Binance...")
+                binance_symbol = f"{symbol}USDT"
+                url = "https://fapi.binance.com/fapi/v1/klines"
+                params = {
+                    "symbol": binance_symbol,
+                    "interval": timeframe_map.get(timeframe, '15m'),
+                    "limit": LOOKBACK_BARS
+                }
+                response = requests.get(url, params=params, timeout=10)
+
+                if response.status_code == 200:
+                    klines = response.json()
+                    # Convert to DataFrame
+                    data = pd.DataFrame(klines, columns=[
+                        'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                        'close_time', 'quote_volume', 'trades', 'taker_buy_base',
+                        'taker_buy_quote', 'ignore'
+                    ])
+
+                    # Convert to proper types
+                    data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
+                    data.set_index('timestamp', inplace=True)
+                    data[['open', 'high', 'low', 'close', 'volume']] = data[['open', 'high', 'low', 'close', 'volume']].astype(float)
+
+                    # Keep only needed columns
+                    data = data[['open', 'high', 'low', 'close', 'volume']]
+
+                    print("✅ Binance data fetched successfully")
+                else:
+                    print(f"⚠️ Binance returned status {response.status_code}")
+
+            except Exception as e:
+                print(f"⚠️ Binance failed: {e}, trying Hyperliquid backup...")
+
+            # Fallback to Hyperliquid if Binance fails
             if data is None or data.empty:
-                print(f"❌ No data available for {symbol} {timeframe}")
+                try:
+                    print(f"📊 Fetching {symbol} data from Hyperliquid (backup)...")
+                    data = hl.get_data(
+                        symbol=symbol,
+                        timeframe=timeframe,
+                        bars=LOOKBACK_BARS,
+                        add_indicators=True
+                    )
+                    print("✅ Hyperliquid data fetched successfully")
+                except Exception as e:
+                    print(f"⚠️ Hyperliquid also failed: {e}")
+
+            if data is None or data.empty:
+                print(f"❌ No data available for {symbol} {timeframe} from any source")
                 return
                 
             # Calculate additional indicators

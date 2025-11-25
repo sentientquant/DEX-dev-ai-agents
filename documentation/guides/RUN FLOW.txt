@@ -1,0 +1,70 @@
+
+claude --dangerously-skip-permissions
+================= Virtual Env ============================
+Grok, Xai and Ollama
+
+cd C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents
+.\venv\Scripts\Activate.ps1
+venv\Scripts\activate.bat
+
+=============== Historical Data ===============
+python src/data/ohlcv/fetch_all_candles_smart.py
+python src/data/ohlcv/fetch_all_candles_smart.py --update
+
+=============== Generate strategies ===============
+python src/agents/websearch_agent.py --once
+python src/agents/research_agent.py --test
+python src/agents/rbi_agent_pp_multi.py
+
+=============== Converter and Validator =================
+python src/scripts/deploy_rbi_winners_to_database.py --clear-deployed --execute
+
+=============== VERIFY DEPLOYMENT =================
+python -c "from risk_management.trading_database import get_trading_db; db = get_trading_db(); deployed = db.get_deployed_strategies(); [print(f'{s[\"strategy_name\"]}: {s[\"backtest_return\"]:.2f}%') for s in deployed]"
+
+=============== ALTCOIN SCAANER ==================
+# 1. Run scanner first
+python trading_modes/binance_altcoin_scanner.py
+python trading_modes/continuous_altcoin_scanner.py
+
+python trading_modes/SCANNER_SWARM_TRADE_FLOW.py --monitor
+python -u trading_modes/SCANNER_SWARM_TRADE_FLOW.py --monitor --mode PAPER
+
+
+
+=============== 3 types of trade flow ==================
+python trading_modes\AI_SWARM_TRADE_FLOW.py
+python trading_modes\RBI_AI_SWARM_TRADE_FLOW.py --mode PAPER
+python trading_modes\RBI_RESEARCH_TRADE_FLOW.py --mode PAPER
+python -u trading_modes/RBI_RESEARCH_TRADE_FLOW.py --mode PAPER --interval 5 --symbols BTC SOL ETH
+
+TIPS
+Check every 5 minutes
+ --mode PAPER --interval 5
+
+ --mode PAPER --interval 60
+
+python -u trading_modes/RBI_RESEARCH_TRADE_FLOW.py --mode PAPER --interval 5
+The -u flag forces unbuffered mode at the Python interpreter level
+
+
+python -u trading_modes/binance_altcoin_scanner.py
+
+
+
+
+Usage: PRUNE BACKTEST FILE.
+# Preview what will be deleted
+python src/scripts/prune_rbi_backtests.py
+
+# Actually delete (frees ~90% disk space)
+python src/scripts/prune_rbi_backtests.py --execute
+
+# Custom threshold (60 days instead of 30)
+python src/scripts/prune_rbi_backtests.py --execute --days 60
+
+
+
+----------------------------------------------------------------
+
+

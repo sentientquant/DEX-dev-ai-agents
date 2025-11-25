@@ -1,0 +1,9 @@
+{
+  "timestamp": "2025-11-18T14:20:26.410002",
+  "validated_symbols": [
+    "ICPUSDT",
+    "FILUSDT"
+  ],
+  "ai_validation": false,
+  "method": "math_only_top_3"
+}

@@ -17,7 +17,16 @@ import numpy as np
 import base64
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
-from termcolor import colored, cprint
+# Make termcolor optional
+try:
+    from termcolor import colored, cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from tqdm import tqdm
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any

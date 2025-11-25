@@ -1,13 +1,22 @@
 """
-🌙 Moon Dev's Ollama Model Integration
-Built with love by Moon Dev 🚀
+[MOON] Moon Dev's Ollama Model Integration
+Built with love by Moon Dev
 
 This module provides integration with locally running Ollama models.
 """
 
 import requests
 import json
-from termcolor import cprint
+# Make termcolor optional
+try:
+    from termcolor import cprint
+except ImportError:
+    def cprint(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        print(text)
+    def colored(text, color=None, attrs=None):
+        """Fallback if termcolor not available"""
+        return text
 from .base_model import BaseModel, ModelResponse
 
 class OllamaModel(BaseModel):
@@ -40,28 +49,28 @@ class OllamaModel(BaseModel):
         try:
             response = requests.get(f"{self.base_url}/tags")
             if response.status_code == 200:
-                cprint(f"✨ Successfully connected to Ollama API", "green")
+                cprint(f"[OK] Successfully connected to Ollama API", "green")
                 # Print available models
                 models = response.json().get("models", [])
                 if models:
                     model_names = [model["name"] for model in models]
-                    cprint(f"📚 Available Ollama models: {model_names}", "cyan")
+                    cprint(f"[MODELS] Available Ollama models: {model_names}", "cyan")
                     if self.model_name not in model_names:
-                        cprint(f"⚠️ Model {self.model_name} not found! Please run:", "yellow")
+                        cprint(f"[WARN] Model {self.model_name} not found! Please run:", "yellow")
                         cprint(f"   ollama pull {self.model_name}", "yellow")
                 else:
-                    cprint("⚠️ No models found! Please pull the model:", "yellow")
+                    cprint("[WARN] No models found! Please pull the model:", "yellow")
                     cprint(f"   ollama pull {self.model_name}", "yellow")
             else:
-                cprint(f"⚠️ Ollama API returned status code: {response.status_code}", "yellow")
+                cprint(f"[WARN] Ollama API returned status code: {response.status_code}", "yellow")
                 raise ConnectionError(f"Ollama API returned status code: {response.status_code}")
         except requests.exceptions.ConnectionError:
-            cprint("❌ Could not connect to Ollama API - is the server running?", "red")
-            cprint("💡 Start the server with: ollama serve", "yellow")
+            cprint("[ERROR] Could not connect to Ollama API - is the server running?", "red")
+            cprint("[INFO] Start the server with: ollama serve", "yellow")
             raise
         except Exception as e:
-            cprint(f"❌ Could not connect to Ollama API: {str(e)}", "red")
-            cprint("💡 Make sure Ollama is running locally (ollama serve)", "yellow")
+            cprint(f"[ERROR] Could not connect to Ollama API: {str(e)}", "red")
+            cprint("[INFO] Make sure Ollama is running locally (ollama serve)", "yellow")
             raise
 
     @property
@@ -139,12 +148,12 @@ class OllamaModel(BaseModel):
                     usage=None  # Ollama doesn't provide token usage info
                 )
             else:
-                cprint(f"❌ Ollama API error: {response.status_code}", "red")
+                cprint(f"[ERROR] Ollama API error: {response.status_code}", "red")
                 cprint(f"Response: {response.text}", "red")
                 raise Exception(f"Ollama API error: {response.status_code}")
 
         except Exception as e:
-            cprint(f"❌ Error generating response: {str(e)}", "red")
+            cprint(f"[ERROR] Error generating response: {str(e)}", "red")
             # Don't re-raise - let swarm agent handle failed responses gracefully
             return ModelResponse(
                 content="",
@@ -182,5 +191,5 @@ class OllamaModel(BaseModel):
                 
             return "Unknown"
         except Exception as e:
-            cprint(f"❌ Error getting model parameters: {str(e)}", "red")
+            cprint(f"[ERROR] Error getting model parameters: {str(e)}", "red")
             return None 

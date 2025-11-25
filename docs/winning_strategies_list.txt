@@ -1,0 +1,21 @@
+WINNING STRATEGIES FROM RBI
+====================================================================================================
+
+  1. T03_VolatilityRetracement_OPT_v1_8.0pct                                Return:      8.0%
+     Path: C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents\src\data\rbi_pp_multi\11_11_2025\backtests_final\T03_VolatilityRetracement_OPT_v1_8.0pct.py
+
+  2. T05_VolatilityOutlier_DEBUG_v0_6.8pct                                  Return:      6.8%
+     Path: C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents\src\data\rbi_pp_multi\11_11_2025\backtests_final\T05_VolatilityOutlier_DEBUG_v0_6.8pct.py
+
+  3. T06_VerticalBullish_DEBUG_v0_3.3pct                                    Return:      3.3%
+     Path: C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents\src\data\rbi_pp_multi\11_11_2025\backtests_final\T06_VerticalBullish_DEBUG_v0_3.3pct.py
+
+  4. T06_SqueezeRetracement_OPT_v3_2.2pct                                   Return:      2.2%
+     Path: C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents\src\data\rbi_pp_multi\11_11_2025\backtests_final\T06_SqueezeRetracement_OPT_v3_2.2pct.py
+
+  5. T08_DiagonalSpread_DEBUG_v1_2.2pct                                     Return:      2.2%
+     Path: C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents\src\data\rbi_pp_multi\11_11_2025\backtests_final\T08_DiagonalSpread_DEBUG_v1_2.2pct.py
+
+  6. T00_SqueezeBreakout_DEBUG_v0_2.0pct                                    Return:      2.0%
+     Path: C:\Users\oia89\OneDrive\Desktop\DEX-dev-ai-agents\src\data\rbi_pp_multi\11_11_2025\backtests_final\T00_SqueezeBreakout_DEBUG_v0_2.0pct.py
+
