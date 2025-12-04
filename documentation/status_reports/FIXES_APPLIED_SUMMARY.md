@@ -170,8 +170,10 @@ def get_all_trades(self, mode: str = None, limit: int = None) -> List[Dict]:
 # GROK_API_KEY=xai-OZ  # Commented out - invalid/incomplete key
 
 # AFTER (Active):
-GROK_API_KEY=xai-kjZRrMzo7WcdPdluQ0qcQvgqZ47rgTuqvCArUEPBHkcCSWQenIi0RqwdWM2MfQjU1nz6yl6oskYFjysG
+GROK_API_KEY=xai-[YOUR_XAI_API_KEY_HERE]
 ```
+
+**Note:** The actual API key is stored securely in `.env` file (gitignored).
 
 **Impact:**
 - XAI/Grok models now available if needed
