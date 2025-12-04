@@ -73,91 +73,165 @@ class ExchangeManager:
             try:
                 # Import Binance Truth API for real market data
                 from risk_management.binance_truth_paper_trading import BinanceTruthAPI
-                from binance.client import Client as BinanceClient
-                from binance.exceptions import BinanceAPIException
 
                 self.binance_api = BinanceTruthAPI()
 
-                # Initialize REAL Binance client for LIVE trading
+                # PERMANENT FIX: Only import binance library if we have API keys
+                # This prevents hanging on import when running in PAPER mode
                 binance_api_key = os.getenv('BINANCE_API_KEY')
                 binance_secret_key = os.getenv('BINANCE_SECRET_KEY')
 
-                if binance_api_key and binance_secret_key:
-                    # CRITICAL FIX: Proper Binance initialization with timestamp handling
-                    # Error: "Timestamp for this request was 1000ms ahead of the server's time"
-                    # Solution: Initialize client correctly and pass recvWindow to API calls, not constructor
-                    import time
+                BinanceClient = None
+                BinanceAPIException = None
 
-                    # Initialize client WITHOUT recv_window in constructor (it's not valid there!)
-                    self.binance_client = BinanceClient(
-                        binance_api_key,
-                        binance_secret_key,
-                        {'timeout': 30}  # ONLY timeout here - no recv_window!
-                    )
+                # Skip import if no API keys (PAPER mode doesn't need it)
+                if not binance_api_key or not binance_secret_key:
+                    cprint(f"ℹ️  No Binance API keys found - PAPER mode only", "cyan")
+                    self.binance_client = None
+                    self.ccxt_binance = None
+                else:
+                    # CRITICAL FIX: Import with subprocess timeout to prevent hanging
+                    # The binance library can hang indefinitely on import
+                    import subprocess
+                    import sys
 
-                    # Calculate time offset with Binance server
-                    connected = False
-                    for attempt in range(3):
+                    cprint(f"[INFO] Testing Binance library availability (5s timeout)...", "cyan")
+
+                    # Test import in subprocess with timeout
+                    test_import_code = "from binance.client import Client; print('OK')"
+                    try:
+                        result = subprocess.run(
+                            [sys.executable, "-c", test_import_code],
+                            capture_output=True,
+                            timeout=5.0,  # 5 second timeout
+                            text=True
+                        )
+
+                        if result.returncode == 0 and "OK" in result.stdout:
+                            # Import succeeded in subprocess, safe to import in main process
+                            cprint(f"[INFO] Loading Binance library for LIVE trading...", "cyan")
+                            from binance.client import Client as BinanceClient
+                            from binance.exceptions import BinanceAPIException
+                            cprint(f"✅ Binance library loaded successfully", "green")
+                        else:
+                            cprint(f"⚠️  Binance library test failed", "yellow")
+                            cprint(f"   Continuing in PAPER mode without LIVE trading", "yellow")
+                            BinanceClient = None
+                            BinanceAPIException = None
+                    except subprocess.TimeoutExpired:
+                        cprint(f"⚠️  Binance library import timed out (network issue)", "yellow")
+                        cprint(f"   Continuing in PAPER mode without LIVE trading", "yellow")
+                        BinanceClient = None
+                        BinanceAPIException = None
+                    except Exception as import_err:
+                        cprint(f"⚠️  Failed to test binance library: {import_err}", "yellow")
+                        cprint(f"   Continuing in PAPER mode without LIVE trading", "yellow")
+                        BinanceClient = None
+                        BinanceAPIException = None
+
+                # Only proceed with LIVE trading setup if we have BinanceClient
+                if BinanceClient is not None and binance_api_key and binance_secret_key:
+                    # PERMANENT FIX: Sync Windows time BEFORE initializing Binance
+                    # This prevents timestamp errors from the start
+                    if os.name == 'nt':
                         try:
-                            # Calculate time offset
-                            server_time = self.binance_client.get_server_time()
-                            local_time = int(time.time() * 1000)
-                            time_offset = server_time['serverTime'] - local_time
-
-                            cprint(f"🕐 Time sync: Local={local_time}, Server={server_time['serverTime']}, Offset={time_offset}ms", "cyan")
-
-                            # Test connection with proper recvWindow as API parameter
-                            recv_window = 10000 * (attempt + 1)  # 10s, 20s, 30s
-                            account_info = self.binance_client.get_account(recvWindow=recv_window)
-
-                            # If we get here, connection successful
-                            connected = True
-                            self.recv_window = recv_window  # Store for future use
-                            cprint(f"✅ Binance connection successful (recvWindow={recv_window}ms)", "green")
-                            cprint(f"   Account Type: {account_info.get('accountType', 'SPOT')}", "cyan")
-                            break
-
-                        except Exception as e:
-                            error_msg = str(e)
-                            if "Timestamp" in error_msg or "-1021" in error_msg:
-                                cprint(f"⚠️  Attempt {attempt+1} failed: Timestamp issue, retrying with larger recvWindow...", "yellow")
-                                # Optionally sync system time on Windows
-                                if attempt == 1 and os.name == 'nt':
-                                    try:
-                                        import subprocess
-                                        subprocess.run(['w32tm', '/resync'], capture_output=True, check=False)
-                                        cprint("   🔧 Attempted Windows time sync", "cyan")
-                                    except:
-                                        pass
+                            import subprocess
+                            cprint(f"🔧 Syncing Windows system time with internet time servers...", "cyan")
+                            result = subprocess.run(['w32tm', '/resync'], capture_output=True, text=True, timeout=10, check=False)
+                            if result.returncode == 0:
+                                cprint(f"   ✅ Time synchronized successfully", "green")
+                                # Wait for time sync to propagate
+                                time.sleep(1)
                             else:
-                                cprint(f"❌ Failed to initialize Binance: {e}", "red")
-                                raise e
+                                cprint(f"   ⚠️  Time sync returned: {result.stdout.strip()}", "yellow")
+                                cprint(f"   Note: Time sync may require administrator privileges", "yellow")
+                        except subprocess.TimeoutExpired:
+                            cprint(f"   ⚠️  Time sync timed out", "yellow")
+                        except Exception as sync_err:
+                            cprint(f"   ⚠️  Time sync skipped: {sync_err}", "yellow")
 
-                    if not connected:
-                        # Final attempt with maximum recvWindow
-                        try:
-                            account_info = self.binance_client.get_account(recvWindow=60000)
-                            self.recv_window = 60000
-                            connected = True
-                            cprint(f"⚠️  Using maximum recvWindow (60s) as fallback", "yellow")
-                        except Exception as final_err:
-                            cprint(f"❌ Failed to initialize Binance after all attempts: {final_err}", "red")
-                            raise final_err
+                    # CRITICAL FIX: Initialize CCXT first (better timestamp handling)
+                    # CCXT has built-in 'adjustForTimeDifference' which python-binance lacks
+                    cprint(f"🔧 Initializing Binance via CCXT (timestamp auto-adjustment)...", "cyan")
 
-                    # Initialize CCXT Binance client for OCO orders (better API support)
                     self.ccxt_binance = ccxt.binance({
                         'apiKey': binance_api_key,
                         'secret': binance_secret_key,
                         'enableRateLimit': True,
+                        'timeout': 30000,  # 30 second timeout
                         'options': {
                             'defaultType': 'spot',
-                            'recvWindow': 60000,  # CCXT handles this correctly
-                            'adjustForTimeDifference': True,  # Auto-adjust timestamps
+                            'recvWindow': 60000,  # 60 second receive window
+                            'adjustForTimeDifference': True,  # CRITICAL: Auto-adjust for clock drift
                         }
                     })
+
+                    # Test CCXT connection and load markets
+                    connected = False
+                    for attempt in range(3):
+                        try:
+                            # Synchronize time offset with exchange
+                            cprint(f"🕐 Fetching server time (attempt {attempt+1}/3)...", "cyan")
+                            self.ccxt_binance.load_time_difference()  # Calculates and stores offset
+
+                            # Test account access
+                            account_info = self.ccxt_binance.fetch_balance()
+
+                            # Load market data
+                            self.ccxt_binance.load_markets()
+
+                            connected = True
+                            offset_ms = self.ccxt_binance.options.get('timeDifference', 0)
+                            cprint(f"✅ CCXT Binance connected (time offset: {offset_ms}ms)", "green")
+                            cprint(f"   Account Type: SPOT", "cyan")
+                            cprint(f"   Total Balance: ${account_info['total'].get('USDT', 0):.2f} USDT", "cyan")
+                            break
+
+                        except Exception as e:
+                            error_msg = str(e)
+                            cprint(f"⚠️  CCXT attempt {attempt+1} failed: {error_msg}", "yellow")
+                            if attempt < 2:
+                                time.sleep(2)  # Wait before retry
+                            else:
+                                cprint(f"❌ Failed to initialize CCXT Binance: {e}", "red")
+                                raise e
+
+                    if not connected:
+                        raise Exception("Failed to connect to Binance via CCXT after 3 attempts")
+
+                    # PERMANENT FIX: Initialize python-binance client LAST (optional fallback)
+                    # Use CCXT as primary client since it handles timestamps correctly
+                    try:
+                        cprint(f"🔧 Initializing python-binance client (fallback)...", "cyan")
+
+                        # Get timestamp offset from CCXT
+                        time_offset = self.ccxt_binance.options.get('timeDifference', 0)
+
+                        self.binance_client = BinanceClient(
+                            binance_api_key,
+                            binance_secret_key,
+                            {'timeout': 30},
+                            ping=False  # Disable auto-ping
+                        )
+
+                        # PERMANENT FIX: Apply timestamp offset to python-binance client
+                        if time_offset != 0:
+                            cprint(f"   🔧 Applying {time_offset}ms offset to python-binance client", "cyan")
+                            self.binance_client.timestamp_offset = time_offset
+
+                        self.recv_window = 60000  # Use max receive window
+                        cprint(f"   ✅ python-binance client ready (backup for specific APIs)", "green")
+
+                    except Exception as fallback_err:
+                        cprint(f"   ⚠️  python-binance client init failed: {fallback_err}", "yellow")
+                        cprint(f"   Using CCXT only (recommended)", "cyan")
+                        self.binance_client = None
+                        self.recv_window = 60000
+
+                    # CCXT already initialized above with better timestamp handling
                     cprint(f"✅ Initialized Binance LIVE trading", "green")
-                    cprint(f"   API Status: Connected", "cyan")
-                    cprint(f"   Account Type: {account_info.get('accountType', 'SPOT')}", "cyan")
+                    cprint(f"   Primary: CCXT (timestamp auto-adjustment)", "cyan")
+                    cprint(f"   Fallback: python-binance (legacy API support)", "cyan" if self.binance_client else "yellow")
                 else:
                     self.binance_client = None
                     self.ccxt_binance = None
@@ -513,12 +587,15 @@ class ExchangeManager:
                     total_value += row.get('value_usd', 0)
             return total_value
 
-    def get_balance(self):
+    def get_balance(self, asset: str = 'USDT'):
         """
         Get available balance for trading
 
+        Args:
+            asset: Asset to query (default 'USDT'). For Binance, can be 'USDT', 'BTC', 'ETH', etc.
+
         Returns:
-            Available balance in USD
+            Available balance (USDT in USD, other assets in native units)
         """
         if self.exchange.lower() == 'hyperliquid':
             return self.hl.get_balance(self.account)
@@ -530,49 +607,48 @@ class ExchangeManager:
                     recv_window = getattr(self, 'recv_window', 60000)  # Use stored or default to 60s
                     account = self.binance_client.get_account(recvWindow=recv_window)
 
-                    # Find USDT balance (available for trading)
-                    usdt_balance = 0.0
+                    # Find balance for requested asset
                     for balance in account['balances']:
-                        if balance['asset'] == 'USDT':
-                            usdt_balance = float(balance['free'])
-                            break
+                        if balance['asset'] == asset:
+                            return float(balance['free'])
 
-                    return usdt_balance
+                    # Asset not found
+                    return 0.0
+
                 except Exception as e:
-                    cprint(f"   ❌ Failed to get Binance balance: {str(e)}", "red")
+                    cprint(f"   ❌ Failed to get Binance balance for {asset}: {str(e)}", "red")
                     return 0.0
             else:
                 # Paper trading mode - return placeholder
-                return 10000.0  # Default paper trading balance
+                if asset == 'USDT':
+                    return 10000.0  # Default paper trading balance
+                else:
+                    return 0.0  # No other assets in paper mode
         else:
             from src.config import USDC_ADDRESS
             return self.solana.get_token_balance_usd(USDC_ADDRESS)
 
     def place_oco_order(self, symbol, side, tp1_quantity, sl_quantity, stop_price, stop_limit_price, take_profit_price):
         """
-        Place OCO (One-Cancels-Other) order on Binance with ASYMMETRIC QUANTITIES
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        DEPRECATED - DO NOT USE
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        OCO = One limit order (TP) + One stop-limit order (SL), whichever fills first cancels the other
+        This method is DEPRECATED as of 2024-11.
+        Use place_bracket_orders_spot() instead.
 
-        ASYMMETRIC STRUCTURE:
-        - TP1 = 40% (profit target)
-        - SL = 100% (full protection - prevents orphaned TP2/TP3 when SL triggers)
+        Reason: Binance OCO cannot have asymmetric quantities. Both legs must have
+        the same quantity, which breaks our 40/30/30 TP ladder strategy.
 
-        When TP1 hits -> SL cancelled, 60% remains for TP2/TP3
-        When SL hits -> TP1 cancelled, 100% closed, TP2/TP3 auto-cancelled by Binance (no qty left)
+        The bracket order system places separate SL + TP orders with proper
+        lifecycle management (TP fills -> replace SL, SL fills -> cancel TPs).
 
-        Args:
-            symbol: Trading pair (e.g., 'BTCUSDT')
-            side: 'BUY' or 'SELL' (entry side)
-            tp1_quantity: TP1 quantity (40% of position)
-            sl_quantity: SL quantity (100% of position)
-            stop_price: Stop loss trigger price
-            stop_limit_price: Stop loss limit price (slightly worse than trigger)
-            take_profit_price: Take profit limit price
-
-        Returns:
-            Order response from Binance
+        !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         """
+        raise DeprecationWarning(
+            "place_oco_order() is DEPRECATED. Use place_bracket_orders_spot() instead. "
+            "OCO cannot have asymmetric quantities - use separate SL + TP orders."
+        )
         if self.exchange.lower() == 'binance' and self.binance_client:
             try:
                 # Ensure symbol has USDT suffix
@@ -723,6 +799,143 @@ class ExchangeManager:
         else:
             cprint(f"   [WARN] Limit orders not supported for {self.exchange}", "yellow")
             return {'success': False, 'error': 'Limit orders not supported'}
+
+    def place_stop_loss_order(self, symbol, side, quantity, stop_price, limit_price):
+        """
+        Place STOP_LOSS_LIMIT order on Binance with COMPREHENSIVE validation
+
+        CRITICAL FIXES:
+        1. Verify base asset balance (can't SELL what you don't have)
+        2. Check USDT margin requirement (Binance platform requirement)
+        3. Use ACTUAL account balance, not calculated quantity
+        4. Proper quantity precision and validation
+
+        Args:
+            symbol: Trading pair (e.g., 'BTCUSDT' or 'BTC')
+            side: 'BUY' or 'SELL' (exit side, opposite of position)
+            quantity: Requested quantity to exit
+            stop_price: Stop trigger price
+            limit_price: Stop limit price (slightly worse than trigger for guaranteed fill)
+
+        Returns:
+            {"success": True/False, "orderId": ..., "order": {...}, "error": "..."}
+        """
+        if self.exchange.lower() != 'binance' or not self.binance_client:
+            cprint(f"   [SL] ⚠️  Binance client not available", "yellow")
+            return {"success": False, "error": "Binance client not available"}
+
+        try:
+            import math  # PERMANENT FIX: Import math BEFORE using it
+
+            # Normalize symbol
+            symbol = symbol if symbol.endswith('USDT') else f"{symbol}USDT"
+            base_asset = symbol.replace('USDT', '')  # BTC, ETH, SOL, etc.
+
+            # CRITICAL FIX #1: Verify we actually HAVE the base asset
+            # Can't place SELL order without the asset in account
+            try:
+                actual_balance = self.get_balance(base_asset)
+
+                if actual_balance <= 0:
+                    error_msg = f"No {base_asset} balance found in account (can't place SELL SL)"
+                    cprint(f"   [SL] ❌ {error_msg}", "red")
+                    cprint(f"   [SL] 💡 Market buy may have failed or not settled yet", "yellow")
+                    return {"success": False, "error": error_msg}
+
+                # Use ACTUAL balance if less than requested (safety)
+                if actual_balance < quantity:
+                    cprint(f"   [SL] ⚠️  Requested qty {quantity:.8f} > available {actual_balance:.8f}", "yellow")
+                    cprint(f"   [SL] 🔧 Using actual balance instead", "cyan")
+                    quantity = actual_balance
+
+                cprint(f"   [SL] ✅ {base_asset} balance verified: {actual_balance:.8f} (using {quantity:.8f})", "green")
+
+            except Exception as base_check_err:
+                error_msg = f"Failed to verify {base_asset} balance: {base_check_err}"
+                cprint(f"   [SL] ❌ {error_msg}", "red")
+                return {"success": False, "error": error_msg}
+
+            # CRITICAL FIX #2: Check USDT margin requirement
+            # Binance requires minimum USDT balance for STOP_LOSS_LIMIT orders
+            # even for SELL orders (platform margin/collateral requirement)
+            try:
+                usdt_balance = self.get_balance('USDT')
+                MIN_USDT_MARGIN_PER_SL = 50.0  # Reduced from $300 to $50 (more realistic)
+
+                if usdt_balance < MIN_USDT_MARGIN_PER_SL:
+                    error_msg = f"Insufficient USDT margin (${usdt_balance:.2f} < ${MIN_USDT_MARGIN_PER_SL:.2f} required)"
+                    cprint(f"   [SL] ⚠️  {error_msg}", "yellow")
+                    cprint(f"   [SL] 💡 Binance requires USDT margin for STOP_LOSS_LIMIT orders", "cyan")
+                    return {"success": False, "error": error_msg}
+                else:
+                    cprint(f"   [SL] ✅ USDT margin check passed: ${usdt_balance:.2f}", "green")
+            except Exception as margin_check_err:
+                cprint(f"   [SL] ⚠️  Could not verify USDT margin: {margin_check_err}", "yellow")
+                # Continue anyway - margin check is safety measure
+
+            # Get symbol filters for precision (symbol already normalized above)
+            try:
+                exchange_info = self.binance_client.get_symbol_info(symbol)
+                filters = {f['filterType']: f for f in exchange_info.get('filters', [])}
+
+                lot_filter = filters.get('LOT_SIZE', {})
+                price_filter = filters.get('PRICE_FILTER', {})
+
+                step_size = float(lot_filter.get('stepSize', '0.00000001'))
+                min_qty = float(lot_filter.get('minQty', '0.00000001'))
+                tick_size = float(price_filter.get('tickSize', '0.01'))
+
+                # Calculate precision
+                qty_precision = max(0, -int(round(math.log10(step_size)))) if step_size > 0 else 8
+                price_precision = max(0, -int(round(math.log10(tick_size)))) if tick_size > 0 else 2
+
+                # Round values
+                quantity_rounded = math.floor(quantity / step_size) * step_size
+                quantity_rounded = max(quantity_rounded, min_qty)
+                stop_price_rounded = round(stop_price / tick_size) * tick_size
+                limit_price_rounded = round(limit_price / tick_size) * tick_size
+
+                # Format for API (no scientific notation)
+                qty_str = f"{quantity_rounded:.{qty_precision}f}"
+                stop_str = f"{stop_price_rounded:.{price_precision}f}"
+                limit_str = f"{limit_price_rounded:.{price_precision}f}"
+
+            except Exception as filter_err:
+                cprint(f"   [SL] ⚠️  Could not get filters: {filter_err}, using raw values", "yellow")
+                qty_str = str(quantity)
+                stop_str = str(stop_price)
+                limit_str = str(limit_price)
+
+            recv_window = getattr(self, 'recv_window', 60000)
+
+            cprint(f"   [SL] Placing STOP_LOSS_LIMIT: {side} {qty_str} {symbol} @ stop={stop_str}, limit={limit_str}", "cyan")
+
+            order = self.binance_client.create_order(
+                symbol=symbol,
+                side=side,
+                type='STOP_LOSS_LIMIT',
+                timeInForce='GTC',
+                quantity=qty_str,
+                stopPrice=stop_str,
+                price=limit_str,
+                recvWindow=recv_window
+            )
+
+            cprint(f"   [SL] ✅ Order placed - ID: {order.get('orderId')}", "green")
+
+            return {
+                "success": True,
+                "order": order,
+                "orderId": order.get('orderId'),
+                "type": 'STOP_LOSS_LIMIT',
+                "origQty": float(order.get('origQty', quantity)),
+                "stopPrice": float(order.get('stopPrice', stop_price)),
+                "price": float(order.get('price', limit_price))
+            }
+
+        except Exception as e:
+            cprint(f"   [SL] ❌ Failed: {e}", "red")
+            return {"success": False, "error": str(e)}
 
     def get_all_positions(self):
         """
@@ -903,6 +1116,451 @@ class ExchangeManager:
         formatted = formatted.rstrip('0').rstrip('.')
 
         return formatted
+
+    def place_bracket_orders_spot(
+        self,
+        symbol: str,
+        entry_side: str,
+        total_qty: float,
+        stop_price: float,
+        stop_limit_price: float,
+        take_profits: list  # List of (price, qty) tuples
+    ) -> dict:
+        """
+        Place bracket orders for SPOT trading: SL (100%) + TP ladder (partials)
+
+        REPLACES OCO with separate orders for better profit profile:
+        - Stop Loss: 100% of position (full protection)
+        - Take Profits: Partial allocations (e.g., 40/30/30)
+
+        Lifecycle:
+        - If SL hits: cancel all TP orders
+        - If any TP fills: replace SL with reduced quantity
+        - If all TPs fill: cancel SL
+
+        Args:
+            symbol: Trading pair (e.g., 'BTCUSDT' or 'BTC')
+            entry_side: 'BUY' or 'SELL' (the entry side)
+            total_qty: Total position quantity
+            stop_price: Stop loss trigger price
+            stop_limit_price: Stop loss limit price (slightly worse than trigger)
+            take_profits: List of (price, qty) tuples for TP ladder
+
+        Returns:
+            {
+                "success": True/False,
+                "sl_order": {"orderId": ..., "type": ..., "origQty": ..., "stopPrice": ..., "price": ...},
+                "tp_orders": [{"orderId": ..., "price": ..., "origQty": ...}, ...],
+                "errors": []
+            }
+        """
+        result = {
+            "success": False,
+            "sl_order": None,
+            "tp_orders": [],
+            "errors": []
+        }
+
+        if self.exchange.lower() != 'binance':
+            result["errors"].append(f"Bracket orders only supported for Binance, not {self.exchange}")
+            return result
+
+        if not self.binance_client:
+            result["errors"].append("Binance client not initialized (PAPER mode)")
+            return result
+
+        try:
+            # Normalize symbol to XXXUSDT format
+            symbol = symbol if symbol.endswith('USDT') else f"{symbol}USDT"
+
+            # Determine exit side (opposite of entry)
+            exit_side = 'SELL' if entry_side.upper() == 'BUY' else 'BUY'
+
+            # Get symbol filters for precision
+            filters = self.get_symbol_filters(symbol)
+            if not filters:
+                result["errors"].append(f"Could not get filters for {symbol}")
+                return result
+
+            # Extract precision from filters
+            lot_filter = filters.get('LOT_SIZE', {})
+            price_filter = filters.get('PRICE_FILTER', {})
+            notional_filter = filters.get('NOTIONAL', filters.get('MIN_NOTIONAL', {}))
+
+            step_size = float(lot_filter.get('stepSize', '0.00000001'))
+            min_qty = float(lot_filter.get('minQty', '0.00000001'))
+            tick_size = float(price_filter.get('tickSize', '0.01'))
+            min_notional = float(notional_filter.get('minNotional', '5.0'))
+
+            # Calculate precision from step/tick size
+            qty_precision = self._get_precision_from_step(step_size)
+            price_precision = self._get_precision_from_step(tick_size)
+
+            cprint(f"   [BRACKET] Symbol: {symbol}, Exit Side: {exit_side}", "cyan")
+            cprint(f"   [BRACKET] Total Qty: {total_qty}, Step Size: {step_size}, Tick Size: {tick_size}", "cyan")
+
+            # Round total quantity
+            total_qty_rounded = self._round_to_step(total_qty, step_size, min_qty)
+            if total_qty_rounded == 0:
+                result["errors"].append(f"Total quantity {total_qty} rounds to 0 (min: {min_qty})")
+                return result
+
+            # Round prices
+            stop_price_rounded = self._round_price(stop_price, tick_size)
+            stop_limit_price_rounded = self._round_price(stop_limit_price, tick_size)
+
+            recv_window = getattr(self, 'recv_window', 60000)
+
+            # ============================================================
+            # STEP 1: Place STOP_LOSS_LIMIT for 100% of position
+            # ============================================================
+            cprint(f"   [BRACKET] Placing SL: {exit_side} {total_qty_rounded} @ stop={stop_price_rounded}, limit={stop_limit_price_rounded}", "yellow")
+
+            try:
+                sl_order = self.binance_client.create_order(
+                    symbol=symbol,
+                    side=exit_side,
+                    type='STOP_LOSS_LIMIT',
+                    timeInForce='GTC',
+                    quantity=self._format_qty(total_qty_rounded, qty_precision),
+                    stopPrice=self._format_price(stop_price_rounded, price_precision),
+                    price=self._format_price(stop_limit_price_rounded, price_precision),
+                    recvWindow=recv_window
+                )
+
+                result["sl_order"] = {
+                    "orderId": sl_order.get('orderId'),
+                    "type": 'STOP_LOSS_LIMIT',
+                    "origQty": float(sl_order.get('origQty', total_qty_rounded)),
+                    "stopPrice": float(sl_order.get('stopPrice', stop_price_rounded)),
+                    "price": float(sl_order.get('price', stop_limit_price_rounded)),
+                    "status": sl_order.get('status', 'NEW')
+                }
+                cprint(f"   [BRACKET] ✅ SL placed - OrderId: {result['sl_order']['orderId']}", "green")
+
+            except Exception as sl_error:
+                result["errors"].append(f"Failed to place SL order: {str(sl_error)}")
+                cprint(f"   [BRACKET] ❌ SL failed: {sl_error}", "red")
+                return result
+
+            # ============================================================
+            # STEP 2: Place TP limit orders for each allocation
+            # ============================================================
+            for i, (tp_price, tp_qty) in enumerate(take_profits, 1):
+                # Round TP price and quantity
+                tp_price_rounded = self._round_price(tp_price, tick_size)
+                tp_qty_rounded = self._round_to_step(tp_qty, step_size, min_qty)
+
+                # Check if quantity is valid
+                if tp_qty_rounded == 0:
+                    result["errors"].append(f"TP{i} quantity {tp_qty} rounds to 0 (min: {min_qty})")
+                    cprint(f"   [BRACKET] ⚠️ TP{i} skipped - qty too small", "yellow")
+                    continue
+
+                # Check minimum notional
+                notional = tp_qty_rounded * tp_price_rounded
+                if notional < min_notional:
+                    result["errors"].append(f"TP{i} notional ${notional:.2f} < min ${min_notional}")
+                    cprint(f"   [BRACKET] ⚠️ TP{i} skipped - notional too small", "yellow")
+                    continue
+
+                cprint(f"   [BRACKET] Placing TP{i}: {exit_side} {tp_qty_rounded} @ {tp_price_rounded}", "cyan")
+
+                try:
+                    tp_order = self.binance_client.create_order(
+                        symbol=symbol,
+                        side=exit_side,
+                        type='LIMIT',
+                        timeInForce='GTC',
+                        quantity=self._format_qty(tp_qty_rounded, qty_precision),
+                        price=self._format_price(tp_price_rounded, price_precision),
+                        recvWindow=recv_window
+                    )
+
+                    result["tp_orders"].append({
+                        "orderId": tp_order.get('orderId'),
+                        "level": i,
+                        "price": float(tp_order.get('price', tp_price_rounded)),
+                        "origQty": float(tp_order.get('origQty', tp_qty_rounded)),
+                        "status": tp_order.get('status', 'NEW')
+                    })
+                    cprint(f"   [BRACKET] ✅ TP{i} placed - OrderId: {tp_order.get('orderId')}", "green")
+
+                except Exception as tp_error:
+                    result["errors"].append(f"Failed to place TP{i}: {str(tp_error)}")
+                    cprint(f"   [BRACKET] ⚠️ TP{i} failed: {tp_error}", "yellow")
+
+            # Success if we have SL and at least one TP
+            if result["sl_order"] and len(result["tp_orders"]) > 0:
+                result["success"] = True
+                cprint(f"   [BRACKET] ✅ Bracket complete: 1 SL + {len(result['tp_orders'])} TPs", "green")
+            elif result["sl_order"]:
+                result["success"] = True  # SL alone is acceptable (TPs optional)
+                cprint(f"   [BRACKET] ⚠️ Bracket partial: SL placed, 0 TPs (below notional)", "yellow")
+
+            return result
+
+        except Exception as e:
+            result["errors"].append(f"Bracket order exception: {str(e)}")
+            cprint(f"   [BRACKET] ❌ Exception: {e}", "red")
+            return result
+
+    def cancel_order(self, symbol: str, order_id: int) -> dict:
+        """
+        Cancel a specific order by orderId
+
+        Args:
+            symbol: Trading pair (e.g., 'BTCUSDT')
+            order_id: Binance order ID
+
+        Returns:
+            {"success": True/False, "order": {...}, "error": "..."}
+        """
+        if self.exchange.lower() != 'binance' or not self.binance_client:
+            return {"success": False, "error": "Binance client not available"}
+
+        try:
+            symbol = symbol if symbol.endswith('USDT') else f"{symbol}USDT"
+            recv_window = getattr(self, 'recv_window', 60000)
+
+            result = self.binance_client.cancel_order(
+                symbol=symbol,
+                orderId=order_id,
+                recvWindow=recv_window
+            )
+
+            cprint(f"   [CANCEL] ✅ Order {order_id} cancelled", "green")
+            return {"success": True, "order": result}
+
+        except Exception as e:
+            error_msg = str(e)
+            # "Unknown order sent" means order already filled/cancelled
+            if "Unknown order" in error_msg or "-2011" in error_msg:
+                cprint(f"   [CANCEL] Order {order_id} already filled/cancelled", "yellow")
+                return {"success": True, "order": None, "note": "Already filled/cancelled"}
+
+            cprint(f"   [CANCEL] ❌ Failed to cancel {order_id}: {e}", "red")
+            return {"success": False, "error": error_msg}
+
+    def get_order_status(self, symbol: str, order_id: int) -> dict:
+        """
+        Get status of a specific order
+
+        Args:
+            symbol: Trading pair
+            order_id: Binance order ID
+
+        Returns:
+            Order info dict or error
+        """
+        if self.exchange.lower() != 'binance' or not self.binance_client:
+            return {"success": False, "error": "Binance client not available"}
+
+        try:
+            symbol = symbol if symbol.endswith('USDT') else f"{symbol}USDT"
+            recv_window = getattr(self, 'recv_window', 60000)
+
+            order = self.binance_client.get_order(
+                symbol=symbol,
+                orderId=order_id,
+                recvWindow=recv_window
+            )
+
+            return {
+                "success": True,
+                "orderId": order.get('orderId'),
+                "status": order.get('status'),  # NEW, FILLED, CANCELED, PARTIALLY_FILLED
+                "executedQty": float(order.get('executedQty', 0)),
+                "origQty": float(order.get('origQty', 0)),
+                "price": float(order.get('price', 0)),
+                "type": order.get('type'),
+                "side": order.get('side'),
+                "raw": order
+            }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def replace_stop_loss(
+        self,
+        symbol: str,
+        old_order_id: int,
+        new_qty: float,
+        stop_price: float,
+        stop_limit_price: float,
+        exit_side: str
+    ) -> dict:
+        """
+        Replace stop loss order with new quantity (after TP fill)
+
+        Atomic operation: cancel old SL, place new SL
+        If new SL fails, we have no protection (critical error)
+
+        Args:
+            symbol: Trading pair
+            old_order_id: Current SL order ID to cancel
+            new_qty: New remaining quantity
+            stop_price: Stop trigger price
+            stop_limit_price: Stop limit price
+            exit_side: 'BUY' or 'SELL'
+
+        Returns:
+            {"success": True/False, "new_order": {...}, "error": "..."}
+        """
+        result = {"success": False, "new_order": None, "error": None}
+
+        if self.exchange.lower() != 'binance' or not self.binance_client:
+            result["error"] = "Binance client not available"
+            return result
+
+        try:
+            symbol = symbol if symbol.endswith('USDT') else f"{symbol}USDT"
+
+            # Get filters
+            filters = self.get_symbol_filters(symbol)
+            lot_filter = filters.get('LOT_SIZE', {})
+            price_filter = filters.get('PRICE_FILTER', {})
+
+            step_size = float(lot_filter.get('stepSize', '0.00000001'))
+            min_qty = float(lot_filter.get('minQty', '0.00000001'))
+            tick_size = float(price_filter.get('tickSize', '0.01'))
+
+            qty_precision = self._get_precision_from_step(step_size)
+            price_precision = self._get_precision_from_step(tick_size)
+
+            # Round values
+            new_qty_rounded = self._round_to_step(new_qty, step_size, min_qty)
+            stop_price_rounded = self._round_price(stop_price, tick_size)
+            stop_limit_price_rounded = self._round_price(stop_limit_price, tick_size)
+
+            # Check if remaining quantity is valid
+            if new_qty_rounded == 0:
+                cprint(f"   [REPLACE_SL] No remaining qty to protect ({new_qty} rounds to 0)", "yellow")
+                # Cancel old SL anyway
+                self.cancel_order(symbol, old_order_id)
+                result["success"] = True
+                result["note"] = "No SL needed - position fully exited"
+                return result
+
+            recv_window = getattr(self, 'recv_window', 60000)
+
+            # Step 1: Cancel old SL
+            cprint(f"   [REPLACE_SL] Cancelling old SL {old_order_id}...", "cyan")
+            cancel_result = self.cancel_order(symbol, old_order_id)
+
+            if not cancel_result.get("success"):
+                # If cancel failed but order was already gone, continue
+                if "Already filled/cancelled" not in cancel_result.get("note", ""):
+                    result["error"] = f"Failed to cancel old SL: {cancel_result.get('error')}"
+                    return result
+
+            # Step 2: Place new SL with reduced quantity
+            cprint(f"   [REPLACE_SL] Placing new SL: {exit_side} {new_qty_rounded} @ {stop_price_rounded}", "cyan")
+
+            new_sl = self.binance_client.create_order(
+                symbol=symbol,
+                side=exit_side,
+                type='STOP_LOSS_LIMIT',
+                timeInForce='GTC',
+                quantity=self._format_qty(new_qty_rounded, qty_precision),
+                stopPrice=self._format_price(stop_price_rounded, price_precision),
+                price=self._format_price(stop_limit_price_rounded, price_precision),
+                recvWindow=recv_window
+            )
+
+            result["success"] = True
+            result["new_order"] = {
+                "orderId": new_sl.get('orderId'),
+                "origQty": float(new_sl.get('origQty', new_qty_rounded)),
+                "stopPrice": float(new_sl.get('stopPrice', stop_price_rounded)),
+                "status": new_sl.get('status', 'NEW')
+            }
+
+            cprint(f"   [REPLACE_SL] ✅ New SL placed - OrderId: {result['new_order']['orderId']}", "green")
+            return result
+
+        except Exception as e:
+            result["error"] = f"Replace SL exception: {str(e)}"
+            cprint(f"   [REPLACE_SL] ❌ CRITICAL: {e}", "red")
+            return result
+
+    def cancel_all_bracket_orders(self, symbol: str, sl_order_id: int, tp_order_ids: list) -> dict:
+        """
+        Cancel all bracket orders (SL + all TPs)
+
+        Used when SL fills (cancel remaining TPs) or position manually closed
+
+        Args:
+            symbol: Trading pair
+            sl_order_id: Stop loss order ID (can be None if already cancelled)
+            tp_order_ids: List of TP order IDs
+
+        Returns:
+            {"success": True/False, "cancelled": [...], "errors": [...]}
+        """
+        result = {"success": True, "cancelled": [], "errors": []}
+
+        # Cancel SL if provided
+        if sl_order_id:
+            sl_result = self.cancel_order(symbol, sl_order_id)
+            if sl_result.get("success"):
+                result["cancelled"].append({"type": "SL", "orderId": sl_order_id})
+            else:
+                result["errors"].append(f"SL {sl_order_id}: {sl_result.get('error')}")
+
+        # Cancel all TPs
+        for tp_id in tp_order_ids:
+            tp_result = self.cancel_order(symbol, tp_id)
+            if tp_result.get("success"):
+                result["cancelled"].append({"type": "TP", "orderId": tp_id})
+            else:
+                result["errors"].append(f"TP {tp_id}: {tp_result.get('error')}")
+
+        # Success if we cancelled at least one (or all were already cancelled)
+        result["success"] = len(result["cancelled"]) > 0 or len(result["errors"]) == 0
+
+        cprint(f"   [CANCEL_ALL] Cancelled {len(result['cancelled'])} orders, {len(result['errors'])} errors", "cyan")
+        return result
+
+    # ============================================================
+    # HELPER METHODS FOR PRECISION HANDLING
+    # ============================================================
+
+    def _get_precision_from_step(self, step: float) -> int:
+        """Get decimal precision from step size (e.g., 0.001 -> 3)"""
+        if step >= 1:
+            return 0
+        step_str = f"{step:.10f}".rstrip('0')
+        if '.' in step_str:
+            return len(step_str.split('.')[1])
+        return 0
+
+    def _round_to_step(self, value: float, step: float, min_val: float) -> float:
+        """Round value down to nearest step, respecting minimum"""
+        import math
+        if step == 0:
+            return value
+        rounded = math.floor(value / step) * step
+        if rounded < min_val:
+            return 0.0
+        return rounded
+
+    def _round_price(self, price: float, tick_size: float) -> float:
+        """Round price to tick size"""
+        import math
+        if tick_size == 0:
+            return price
+        return round(price / tick_size) * tick_size
+
+    def _format_qty(self, qty: float, precision: int) -> str:
+        """Format quantity with proper precision"""
+        formatted = f"{qty:.{precision}f}"
+        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
+
+    def _format_price(self, price: float, precision: int) -> str:
+        """Format price with proper precision"""
+        formatted = f"{price:.{precision}f}"
+        return formatted.rstrip('0').rstrip('.') if '.' in formatted else formatted
 
     def __str__(self):
         """String representation of the exchange manager"""

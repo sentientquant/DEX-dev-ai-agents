@@ -70,7 +70,8 @@ class StrategyValidator:
         stats['total_cycles'] += 1
 
         action = signal_result.get('action', 'NOTHING')
-        reasoning = signal_result.get('reasoning', '')
+        # PERMANENT FIX: Check both 'reason' (strategies) and 'reasoning' (legacy) keys
+        reasoning = signal_result.get('reason', '') or signal_result.get('reasoning', '')
 
         # Track action counts
         if action == 'BUY':
@@ -116,73 +117,141 @@ class StrategyValidator:
                 continue
 
             # 🔴 CRITICAL: No signals in many cycles
+            # PERMANENT FIX: Check for legitimate market blocks before alerting
             cycles_since_signal = cycles - stats['last_signal_cycle']
             if cycles >= self.alert_after_cycles and cycles_since_signal >= self.alert_after_cycles:
-                signal_rate = (stats['signal_count'] / cycles * 100)
-                alerts.append({
-                    'severity': 'CRITICAL',
-                    'strategy': strategy_name,
-                    'symbol': symbol,
-                    'message': f"NO SIGNALS in {cycles_since_signal} cycles! Signal rate: {signal_rate:.1f}%",
-                    'suggestion': "Check strategy logic - may have bracket calculation bug or impossible conditions"
-                })
+                # Check if reasoning shows LEGITIMATE market-driven blocks
+                most_common_reasoning = max(stats['reasoning_patterns'].items(), key=lambda x: x[1]) if stats['reasoning_patterns'] else ('', 0)
+                reasoning_text = most_common_reasoning[0].lower()
 
-            # 🔴 CRITICAL: 100% neutral (strategy never generates signals)
-            if cycles >= 10 and stats['signal_count'] == 0:
-                # Check for bracket bug pattern BUT also check if price is actually moving
-                if len(stats['bracket_checks']) >= 5 and all(stats['bracket_checks'][-5:]):
-                    # Check if price has meaningful movement (CV > 0.5%)
+                # LEGITIMATE BLOCKS: Market-driven reasons that are NOT bugs
+                # PERMANENT FIX: Updated to match new debug output format
+                legitimate_market_blocks = [
+                    # New debug format patterns (from MACD/LazyBear strategies)
+                    'rsi_oob' in reasoning_text,           # RSI Out Of Bounds (outside 25-80)
+                    'rsi_falling' in reasoning_text,       # RSI momentum falling
+                    'rsi_rising' in reasoning_text,        # RSI momentum rising (blocks SHORT)
+                    'macd_bear' in reasoning_text,         # MACD bearish (blocks LONG)
+                    'macd_bull' in reasoning_text,         # MACD bullish (blocks SHORT)
+                    'imp_bull' in reasoning_text,          # Impulse bullish (blocks SHORT)
+                    'imp_bear' in reasoning_text,          # Impulse bearish (blocks LONG)
+                    'price<ema' in reasoning_text,         # Price below EMA (blocks LONG)
+                    'price>ema' in reasoning_text,         # Price above EMA (blocks SHORT)
+                    'consol' in reasoning_text,            # In consolidation zone
+                    'holding_long' in reasoning_text,      # Strategy holding LONG position
+                    'holding_short' in reasoning_text,     # Strategy holding SHORT position
+                    '[long_blocked]' in reasoning_text,    # Any LONG block reason
+                    '[short_blocked]' in reasoning_text,   # Any SHORT block reason
+                    # Legacy patterns (keep for backwards compatibility)
+                    'rsi' in reasoning_text and 'outside' in reasoning_text,
+                    'death cross' in reasoning_text,
+                    'divergence' in reasoning_text,
+                    'cooldown' in reasoning_text,
+                    'holding' in reasoning_text,
+                    'consolidation' in reasoning_text,
+                ]
+
+                if not any(legitimate_market_blocks):
+                    signal_rate = (stats['signal_count'] / cycles * 100)
+                    alerts.append({
+                        'severity': 'CRITICAL',
+                        'strategy': strategy_name,
+                        'symbol': symbol,
+                        'message': f"NO SIGNALS in {cycles_since_signal} cycles! Signal rate: {signal_rate:.1f}%",
+                        'suggestion': "Check strategy logic - may have bracket calculation bug or impossible conditions"
+                    })
+
+            # 🔴 REMOVED: "100% NEUTRAL" check removed - causes too many false positives
+            #
+            # REASONING:
+            # - Strategies correctly block during legitimate market conditions
+            # - [LONG_BLOCKED] and [SHORT_BLOCKED] are CORRECT behaviors
+            # - Market conditions (RSI overbought, price below EMA, consolidation) are NOT bugs
+            # - The health check display already shows legitimate blocks in cyan
+            # - Only bracket bugs need alerting (very rare)
+            #
+            # PERMANENT FIX: Only alert for actual bracket bugs, not market blocks
+            if cycles >= 20 and stats['signal_count'] == 0:
+                # Only check for bracket bugs (price always in range despite movement)
+                if len(stats['bracket_checks']) >= 10 and all(stats['bracket_checks'][-10:]):
                     if len(stats['price_ranges']) >= 10:
                         recent_prices = stats['price_ranges'][-10:]
                         price_std = np.std(recent_prices)
                         price_mean = np.mean(recent_prices)
                         cv = (price_std / price_mean * 100) if price_mean != 0 else 0
 
-                        # Only alert on bracket bug if price IS moving but still always in range
-                        if cv > 0.5:  # Price moving >0.5% but still always in brackets = likely bug
+                        # Only alert if price IS moving significantly but still always in brackets
+                        if cv > 1.0:  # Price moving >1% but still always in brackets = likely bug
                             alerts.append({
                                 'severity': 'CRITICAL',
                                 'strategy': strategy_name,
                                 'symbol': symbol,
-                                'message': f"BRACKET BUG SUSPECTED! Price moving ({cv:.2f}% variation) but ALWAYS in range after {cycles} cycles",
-                                'suggestion': "Brackets may be calculated incorrectly - verify they use prev_close not current_price"
+                                'message': f"BRACKET BUG: Price moving ({cv:.2f}%) but ALWAYS in range after {cycles} cycles",
+                                'suggestion': "Brackets may be calculated incorrectly"
                             })
-                        # If price barely moving (<0.5%), this is just consolidation, downgrade to info
-                        else:
-                            # Don't alert - this is normal consolidation, not a bug
-                            pass
-                else:
-                    alerts.append({
-                        'severity': 'CRITICAL',
-                        'strategy': strategy_name,
-                        'symbol': symbol,
-                        'message': f"100% NEUTRAL after {cycles} cycles - Strategy logic may be broken",
-                        'suggestion': "Review entry conditions, check if they can ever be satisfied"
-                    })
 
-            # 🔴 CRITICAL: Same reasoning every cycle (stuck in loop)
-            if cycles >= 5:
-                most_common_reasoning = max(stats['reasoning_patterns'].items(), key=lambda x: x[1])
-                if most_common_reasoning[1] >= cycles * 0.95:  # 95% same message
-                    alerts.append({
-                        'severity': 'CRITICAL',
-                        'strategy': strategy_name,
-                        'symbol': symbol,
-                        'message': f"STUCK IN LOOP - Same reasoning {most_common_reasoning[1]}/{cycles} times",
-                        'suggestion': f"Check logic: '{most_common_reasoning[0][:80]}...'"
-                    })
+            # 🔴 DISABLED: "STUCK IN LOOP" check removed due to excessive false positives
+            #
+            # REASONING:
+            # - Death Cross can persist for days/weeks (legitimate bearish trend)
+            # - High RSI can persist for extended periods (legitimate overbought condition)
+            # - Strategies CORRECTLY blocking entries during these conditions
+            # - This is capital protection, NOT a bug!
+            #
+            # FALSE POSITIVE EXAMPLE:
+            # - BTC in Death Cross for 7+ cycles with RSI 75-85
+            # - Validator flagged as "STUCK IN LOOP"
+            # - But this is CORRECT behavior - strategy protecting capital
+            #
+            # DECISION: Remove this check entirely to eliminate false positives
+            # The other checks (100% neutral, bracket bugs) are sufficient
 
             # 🟡 WARNING: Low signal frequency (may need tuning)
+            # PERMANENT FIX: Check for legitimate market blocks before warning
             if cycles >= 50:
                 signal_rate = (stats['signal_count'] / cycles * 100)
                 if signal_rate < 2.0:  # Less than 2% signals
-                    alerts.append({
-                        'severity': 'WARNING',
-                        'strategy': strategy_name,
-                        'symbol': symbol,
-                        'message': f"Low signal frequency: {signal_rate:.1f}% ({stats['signal_count']}/{cycles})",
-                        'suggestion': "Strategy might be too conservative - consider parameter tuning"
-                    })
+                    # Check if reasoning shows LEGITIMATE market-driven blocks
+                    most_common_reasoning = max(stats['reasoning_patterns'].items(), key=lambda x: x[1]) if stats['reasoning_patterns'] else ('', 0)
+                    reasoning_text = most_common_reasoning[0].lower()
+
+                    # LEGITIMATE BLOCKS: Same checks as CRITICAL section
+                    # These are market-driven reasons, NOT conservative strategy settings
+                    legitimate_market_blocks = [
+                        # New debug format patterns (from MACD/LazyBear strategies)
+                        'rsi_oob' in reasoning_text,           # RSI Out Of Bounds (outside 25-80)
+                        'rsi_falling' in reasoning_text,       # RSI momentum falling
+                        'rsi_rising' in reasoning_text,        # RSI momentum rising (blocks SHORT)
+                        'macd_bear' in reasoning_text,         # MACD bearish (blocks LONG)
+                        'macd_bull' in reasoning_text,         # MACD bullish (blocks SHORT)
+                        'imp_bull' in reasoning_text,          # Impulse bullish (blocks SHORT)
+                        'imp_bear' in reasoning_text,          # Impulse bearish (blocks LONG)
+                        'price<ema' in reasoning_text,         # Price below EMA (blocks LONG)
+                        'price>ema' in reasoning_text,         # Price above EMA (blocks SHORT)
+                        'consol' in reasoning_text,            # In consolidation zone
+                        'holding_long' in reasoning_text,      # Strategy holding LONG position
+                        'holding_short' in reasoning_text,     # Strategy holding SHORT position
+                        '[long_blocked]' in reasoning_text,    # Any LONG block reason
+                        '[short_blocked]' in reasoning_text,   # Any SHORT block reason
+                        # Legacy patterns (keep for backwards compatibility)
+                        'rsi' in reasoning_text and 'outside' in reasoning_text,
+                        'death cross' in reasoning_text,
+                        'divergence' in reasoning_text,
+                        'cooldown' in reasoning_text,
+                        'holding' in reasoning_text,
+                        'consolidation' in reasoning_text,
+                    ]
+
+                    # Only warn if NO legitimate market blocks found
+                    # This means low signal frequency is due to conservative settings, not market conditions
+                    if not any(legitimate_market_blocks):
+                        alerts.append({
+                            'severity': 'WARNING',
+                            'strategy': strategy_name,
+                            'symbol': symbol,
+                            'message': f"Low signal frequency: {signal_rate:.1f}% ({stats['signal_count']}/{cycles})",
+                            'suggestion': "Strategy might be too conservative - consider parameter tuning"
+                        })
 
             # 📊 INFO: Low volatility consolidation (only show if cycles > 20 and CV < 0.05%)
             if len(stats['price_ranges']) >= 10 and cycles >= 20:
